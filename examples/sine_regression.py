@@ -12,7 +12,7 @@ def run_sine_regression():
 
     # Create model
     model = NeuralNetwork(
-        layer_sizes=[1, 5600, 5600, 1],
+        layer_sizes=[1, 2048, 2048, 1],
         activations=[relu, relu, linear]
     )
 
