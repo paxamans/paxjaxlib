@@ -2,9 +2,8 @@ import jax.numpy as jnp
 from jax import jit, grad, random, value_and_grad
 from typing import Callable, List, Tuple
 from .models import NeuralNetwork
-
-def mse_loss(y_pred: jnp.ndarray, y_true: jnp.ndarray) -> float:
-    return jnp.mean((y_pred - y_true) ** 2)
+from .losses import mse_loss  # Import the default loss function
+from .activations import relu, linear  # Import activation functions if needed
 
 # Move update_params outside the class as a pure function
 @jit
@@ -14,9 +13,17 @@ def update_params(params, grads, learning_rate):
 
 class Trainer:
     def __init__(self, model: NeuralNetwork, loss_fn: Callable = mse_loss, learning_rate: float = 0.01):
+        """
+        Initialize the Trainer.
+
+        Args:
+            model (NeuralNetwork): The neural network model to train.
+            loss_fn (Callable): The loss function to use. Default is mean squared error (mse_loss).
+            learning_rate (float): The learning rate for gradient descent. Default is 0.01.
+        """
         self.model = model
         self.learning_rate = learning_rate
-        self.loss_fn = loss_fn
+        self.loss_fn = loss_fn  # Use the provided loss function
 
         # Define pure functions for forward pass and loss
         def forward(params, X):
@@ -29,7 +36,7 @@ class Trainer:
 
         def loss(params, X, y):
             y_pred = forward(params, X)
-            return loss_fn(y_pred, y)
+            return self.loss_fn(y_pred, y)  # Use the provided loss function
 
         # JIT compile the functions
         self.forward = jit(forward)
@@ -37,6 +44,17 @@ class Trainer:
         self.grad_fn = jit(value_and_grad(loss))
 
     def train_step(self, params, X: jnp.ndarray, y: jnp.ndarray) -> Tuple[float, List[Tuple]]:
+        """
+        Perform a single training step.
+
+        Args:
+            params: Current model parameters.
+            X (jnp.ndarray): Input data.
+            y (jnp.ndarray): Target labels.
+
+        Returns:
+            Tuple[float, List[Tuple]]: The loss value and updated parameters.
+        """
         loss_val, grads = self.grad_fn(params, X, y)
         # Use the pure update_params function instead of the class method
         new_params = update_params(params, grads, self.learning_rate)
@@ -44,6 +62,19 @@ class Trainer:
 
     def train(self, X: jnp.ndarray, y: jnp.ndarray, epochs: int = 100, 
              batch_size: int = 32, verbose: bool = True):
+        """
+        Train the model.
+
+        Args:
+            X (jnp.ndarray): Input data.
+            y (jnp.ndarray): Target labels.
+            epochs (int): Number of training epochs. Default is 100.
+            batch_size (int): Batch size for training. Default is 32.
+            verbose (bool): Whether to print training progress. Default is True.
+
+        Returns:
+            List[float]: Training history (loss values).
+        """
         n_samples = len(X)
         history = []
         params = self.model.parameters
