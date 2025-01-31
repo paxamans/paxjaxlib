@@ -107,7 +107,7 @@ python -m pytest tests/
 
 5. Run the example:
 ```bash
-python examples/sine_regression.py
+python examples/usage.py
 ```
 
 
