@@ -90,8 +90,10 @@ deactivate
 ```
 </details>
 
-2. Install requirements
-
+2. git clone and install requirements
+```bash
+git clone https://github.com/paxamans/paxjaxlib.git
+```
 ```bash
 pip install -r requirements.txt
 ```
