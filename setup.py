@@ -2,13 +2,13 @@ from setuptools import setup, find_packages
 
 setup(
     name="paxjaxlib",
-    version="0.0.1",
-    packages=find_packages(),
+    version="0.0.2",
+    package_dir={"": "src"},
+    packages=find_packages(where="src"),
     install_requires=[
         'jax',
         'jaxlib',
-        'numpy',
-        'matplotlib'
+        'numpy'
     ],
     author="Igor Beketov",
     author_email="paxamans@gmail.com",

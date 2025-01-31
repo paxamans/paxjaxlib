@@ -4,6 +4,9 @@ from typing import Callable, List, Tuple
 from .models import NeuralNetwork
 from .losses import mse_loss  # Import the default loss function
 from .activations import relu, linear  # Import activation functions if needed
+from .optimizers import SGD, Adam  # Add other optimizers
+from .schedules import exponential_decay, step_decay
+
 
 # Move update_params outside the class as a pure function
 @jit
@@ -12,20 +15,31 @@ def update_params(params, grads, learning_rate):
             for (W, b), (dW, db) in zip(params, grads)]
 
 class Trainer:
-    def __init__(self, model: NeuralNetwork, loss_fn: Callable = mse_loss, learning_rate: float = 0.01):
-        """
-        Initialize the Trainer.
-
-        Args:
-            model (NeuralNetwork): The neural network model to train.
-            loss_fn (Callable): The loss function to use. Default is mean squared error (mse_loss).
-            learning_rate (float): The learning rate for gradient descent. Default is 0.01.
-        """
+    def __init__(
+        self,
+        model: NeuralNetwork,
+        loss_fn: Callable = mse_loss,
+        optimizer: str = "sgd",
+        learning_rate: float = 0.01,
+        lr_schedule: Callable = None,
+        reg_lambda: float = 0.0
+    ):        
         self.model = model
-        self.learning_rate = learning_rate
-        self.loss_fn = loss_fn  # Use the provided loss function
+        self.reg_lambda = reg_lambda
+        
+        # Initialize optimizer
+        if optimizer == "adam":
+            self.optimizer = Adam(learning_rate)
+        elif optimizer == "sgd":
+            self.optimizer = SGD(learning_rate)
+        else:
+            raise ValueError(f"Unknown optimizer: {optimizer}")
+        
+        # Learning rate schedule
+        self.lr_schedule = lr_schedule
+        self.current_step = 0
 
-        # Define pure functions for forward pass and loss
+        # Define forward pass
         def forward(params, X):
             current_input = X
             for i, (W, b) in enumerate(params):
@@ -34,16 +48,19 @@ class Trainer:
                     current_input = self.model.activations[i](current_input)
             return current_input
 
-        def loss(params, X, y):
-            y_pred = forward(params, X)
-            return self.loss_fn(y_pred, y)  # Use the provided loss function
-
-        # JIT compile the functions
+        # JIT compile the forward function
         self.forward = jit(forward)
+
+        # Define loss with regularization
+        def loss(params, X, y):
+            y_pred = self.forward(params, X)
+            return loss_fn(y_pred, y, params, self.reg_lambda)
+        
+        # JIT compile the loss and gradient functions
         self.loss = jit(loss)
         self.grad_fn = jit(value_and_grad(loss))
 
-    def train_step(self, params, X: jnp.ndarray, y: jnp.ndarray) -> Tuple[float, List[Tuple]]:
+    def train_step(self, params, X, y):
         """
         Perform a single training step.
 
@@ -56,8 +73,13 @@ class Trainer:
             Tuple[float, List[Tuple]]: The loss value and updated parameters.
         """
         loss_val, grads = self.grad_fn(params, X, y)
-        # Use the pure update_params function instead of the class method
-        new_params = update_params(params, grads, self.learning_rate)
+        new_params = self.optimizer.apply_gradients(params, grads)
+        
+        # Update learning rate if schedule exists
+        if self.lr_schedule:
+            self.current_step += 1
+            self.optimizer.learning_rate = self.lr_schedule(self.current_step)
+        
         return loss_val, new_params
 
     def train(self, X: jnp.ndarray, y: jnp.ndarray, epochs: int = 100, 

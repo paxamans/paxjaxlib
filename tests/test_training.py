@@ -1,15 +1,17 @@
 import unittest
 import jax.numpy as jnp
-from src.models import NeuralNetwork
-from src.training import Trainer, mse_loss
-from src.utils import relu, linear
 from jax import random
+from paxjaxlib.models import NeuralNetwork
+from paxjaxlib.training import Trainer, mse_loss
+from paxjaxlib.activations import relu, linear
 
 class TestTrainer(unittest.TestCase):
     def setUp(self):
+        key = random.PRNGKey(0)
         self.model = NeuralNetwork(
             layer_sizes=[2, 4, 1],
-            activations=[relu, linear]
+            activations=[relu, linear],
+            key=key  # Add key
         )
         self.trainer = Trainer(self.model)
 
@@ -38,8 +40,9 @@ class TestTrainer(unittest.TestCase):
             self.assertFalse(jnp.allclose(W_before, W_after))
             self.assertFalse(jnp.allclose(b_before, b_after))
 
+    
     def test_update_params(self):
-        from src.training import update_params  # Import the standalone function
+        from paxjaxlib.training import update_params  # Corrected import
     
         # Create dummy parameters and gradients
         params = [(jnp.ones((2, 4)), jnp.ones(4)), (jnp.ones((4, 1)), jnp.ones(1))]
@@ -51,7 +54,6 @@ class TestTrainer(unittest.TestCase):
     
         # Check that parameters were updated correctly
         for (W, b) in new_params:
-            # New parameters should be less than original ones (1 - learning_rate)
             self.assertTrue(jnp.all(W < 1.0))
             self.assertTrue(jnp.all(b < 1.0))
 
@@ -220,9 +222,11 @@ class TestTrainer(unittest.TestCase):
         y = 2 * X + 1 + 0.1 * random.normal(random.PRNGKey(0), X.shape)
         
         # Create a simple model for this task
+        key = random.PRNGKey(0)
         simple_model = NeuralNetwork(
             layer_sizes=[1, 1],
-            activations=[linear]
+            activations=[linear],
+            key=key  # Add key
         )
         simple_trainer = Trainer(simple_model, learning_rate=0.01)
         
@@ -263,6 +267,46 @@ class TestTrainer(unittest.TestCase):
 
         # Final losses should be relatively close
         self.assertLess(abs(history1[-1] - history2[-1]), 1.0)  # Allow for some variation
+
+    def test_adam_optimizer(self):
+        key = random.PRNGKey(0)
+        model = NeuralNetwork([2, 4, 1], [relu, linear], key=key)
+        trainer = Trainer(model, optimizer="adam", learning_rate=0.001)
+        
+        # Perform training step and check parameter updates
+        X = jnp.array([[1.0, 2.0]])
+        y = jnp.array([[3.0]])
+        initial_params = model.parameters.copy()
+        loss, new_params = trainer.train_step(initial_params, X, y)
+        
+        # Ensure parameters have changed
+        for (W_before, b_before), (W_after, b_after) in zip(initial_params, new_params):
+            self.assertFalse(jnp.allclose(W_before, W_after))
+            self.assertFalse(jnp.allclose(b_before, b_after))
+
+        # Check if Adam's internal state (moments) are updated
+        self.assertIsNotNone(trainer.optimizer.m)
+        self.assertIsNotNone(trainer.optimizer.v)
+
+    def test_l2_regularization(self):
+        key = random.PRNGKey(0)
+        model = NeuralNetwork([2, 4, 1], [relu, linear], key=key)
+        trainer = Trainer(model, reg_lambda=0.1)
+        X = jnp.array([[1.0, 2.0]])
+        y = jnp.array([[3.0]])
+        loss_val = trainer.loss(model.parameters, X, y)
+        self.assertGreater(loss_val, 0)  # Loss should include L2 term
+
+    def test_model_serialization(self):
+        key = random.PRNGKey(0)
+        model = NeuralNetwork([2, 4, 1], [relu, linear], key=key)
+        model.save("test_model.pkl")
+        
+        # Pass a new key when loading the model
+        load_key = random.PRNGKey(1)
+        loaded_model = NeuralNetwork.load([2, 4, 1], [relu, linear], "test_model.pkl", key=load_key)
+        
+        self.assertEqual(len(model.parameters), len(loaded_model.parameters))
 
 
 if __name__ == '__main__':

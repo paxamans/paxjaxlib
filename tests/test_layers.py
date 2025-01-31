@@ -1,10 +1,12 @@
 import unittest
 import jax.numpy as jnp
-from src.layers import Layer
+from jax import random
+from paxjaxlib.layers import Layer
 
 class TestLayer(unittest.TestCase):
     def setUp(self):
-        self.layer = Layer(2, 3)
+        key = random.PRNGKey(0)
+        self.layer = Layer(2, 3, activation=lambda x: x, key=key)  # Add key
 
     def test_initialization(self):
         self.assertEqual(self.layer.input_dim, 2)

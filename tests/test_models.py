@@ -1,13 +1,16 @@
 import unittest
 import jax.numpy as jnp
-from src.models import NeuralNetwork
-from src.utils import relu, linear
+from jax import random
+from paxjaxlib.models import NeuralNetwork
+from paxjaxlib.activations import relu, linear
 
 class TestNeuralNetwork(unittest.TestCase):
     def setUp(self):
+        key = random.PRNGKey(0)
         self.model = NeuralNetwork(
             layer_sizes=[2, 4, 1],
-            activations=[relu, linear]
+            activations=[relu, linear],
+            key=key  # Add key
         )
 
     def test_initialization(self):
