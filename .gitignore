@@ -20,6 +20,7 @@ wheels/
 .installed.cfg
 *.egg
 *.txt
+*.pkl
 # Virtual Environment
 venv/
 env/
