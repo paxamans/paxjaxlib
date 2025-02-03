@@ -36,7 +36,7 @@ y = (1.5 * X1 +
      0.1 * jrandom.normal(subkey, shape=(n_samples, 1)))  # Noise
 
 # Ensure y is the right shape
-y = y.reshape(-1, 1)  # Shape will be (512, 1)
+y = y.reshape(-1, 1)
 
 # Create model
 model = NeuralNetwork(

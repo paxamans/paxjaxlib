@@ -4,7 +4,7 @@ from typing import Callable, List, Tuple
 from .models import NeuralNetwork
 from .losses import mse_loss  # Import the default loss function
 from .activations import relu, linear  # Import activation functions if needed
-from .optimizers import SGD, Adam  # Add other optimizers
+from .optimizers import SGD, Adam, AdaMax, RMSprop, Momentum, Adafactor, AdaGrad, Adadelta
 from .schedules import exponential_decay, step_decay
 
 
@@ -32,6 +32,18 @@ class Trainer:
             self.optimizer = Adam(learning_rate)
         elif optimizer == "sgd":
             self.optimizer = SGD(learning_rate)
+        elif optimizer == "adamax":
+            self.optimizer = AdaMax(learning_rate)
+        elif optimizer == "rmsprop":
+            self.optimizer = RMSprop(learning_rate)
+        elif optimizer == "momentum":
+            self.optimizer = Momentum(learning_rate)
+        elif optimizer == "adafactor":
+            self.optimizer = Adafactor(learning_rate)
+        elif optimizer == "adagrad":
+            self.optimizer = AdaGrad(learning_rate)
+        elif optimizer == "adadelta":
+            self.optimizer = Adadelta()
         else:
             raise ValueError(f"Unknown optimizer: {optimizer}")
         
