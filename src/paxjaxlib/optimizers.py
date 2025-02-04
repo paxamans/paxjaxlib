@@ -1,16 +1,16 @@
 from typing import List, Tuple
 import jax.numpy as jnp
-from jax import tree_util
+from jax import tree_util as tree
 
 class Optimizer:
     def __init__(self, learning_rate: float):
         self.learning_rate = learning_rate
 
-    def apply_gradients(self, params: List[Tuple], grads: List[Tuple]) -> List[Tuple]:
+    def apply_gradients(self, params: List[Tuple[jnp.ndarray, jnp.ndarray]], grads: List[Tuple[jnp.ndarray, jnp.ndarray]]) -> List[Tuple[jnp.ndarray, jnp.ndarray]]:
         raise NotImplementedError
 
 class SGD(Optimizer):
-    def apply_gradients(self, params, grads):
+    def apply_gradients(self, params: List[Tuple[jnp.ndarray, jnp.ndarray]], grads: List[Tuple[jnp.ndarray, jnp.ndarray]]) -> List[Tuple[jnp.ndarray, jnp.ndarray]]:
         return [(W - self.learning_rate * dW, b - self.learning_rate * db) 
                 for (W, b), (dW, db) in zip(params, grads)]
 
@@ -20,131 +20,93 @@ class Adam(Optimizer):
         self.beta1 = beta1
         self.beta2 = beta2
         self.eps = eps
-        self.m = None  # Moments for (weights, biases)
-        self.v = None
-        self.t = 0
+        self.m = None  # first moment estimate
+        self.v = None  # second moment estimate
+        self.t = 0     # time step
 
-    def apply_gradients(self, params, grads):
+    def apply_gradients(self, params: List[Tuple[jnp.ndarray, jnp.ndarray]], grads: List[Tuple[jnp.ndarray, jnp.ndarray]]) -> List[Tuple[jnp.ndarray, jnp.ndarray]]:
         if self.m is None or self.v is None:
-            # Initialize moments for each parameter (W and b)
-            self.m = [ (jnp.zeros_like(W), jnp.zeros_like(b)) for (W, b) in params ]
-            self.v = [ (jnp.zeros_like(W), jnp.zeros_like(b)) for (W, b) in params ]
+            self.m = tree.tree_map(jnp.zeros_like, params)
+            self.v = tree.tree_map(jnp.zeros_like, params)
         
         self.t += 1
-        new_params, new_m, new_v = [], [], []
+        self.m = tree.tree_map(lambda m, g: self.beta1 * m + (1 - self.beta1) * g, self.m, grads)
+        self.v = tree.tree_map(lambda v, g: self.beta2 * v + (1 - self.beta2) * (g ** 2), self.v, grads)
         
-        for (W, b), (dW, db), (m_w, m_b), (v_w, v_b) in zip(params, grads, self.m, self.v):
-            # Update moments for weights
-            m_w_new = self.beta1 * m_w + (1 - self.beta1) * dW
-            v_w_new = self.beta2 * v_w + (1 - self.beta2) * (dW ** 2)
-            m_w_hat = m_w_new / (1 - self.beta1 ** self.t)
-            v_w_hat = v_w_new / (1 - self.beta2 ** self.t)
-            W_new = W - self.learning_rate * m_w_hat / (jnp.sqrt(v_w_hat) + self.eps)
-            
-            # Update moments for biases
-            m_b_new = self.beta1 * m_b + (1 - self.beta1) * db
-            v_b_new = self.beta2 * v_b + (1 - self.beta2) * (db ** 2)
-            m_b_hat = m_b_new / (1 - self.beta1 ** self.t)
-            v_b_hat = v_b_new / (1 - self.beta2 ** self.t)
-            b_new = b - self.learning_rate * m_b_hat / (jnp.sqrt(v_b_hat) + self.eps)
-            
-            new_params.append((W_new, b_new))
-            new_m.append((m_w_new, m_b_new))
-            new_v.append((v_w_new, v_b_new))
+        m_hat = tree.tree_map(lambda m: m / (1 - self.beta1 ** self.t), self.m)
+        v_hat = tree.tree_map(lambda v: v / (1 - self.beta2 ** self.t), self.v)
         
-        self.m, self.v = new_m, new_v
-        return new_params
-
+        return tree.tree_map(lambda p, m, v: p - self.learning_rate * m / (jnp.sqrt(v) + self.eps), params, m_hat, v_hat)
+        
 class AdaMax(Optimizer):
     def __init__(self, lr=0.002, beta1=0.9, beta2=0.999, eps=1e-8):
         super().__init__(lr)
         self.beta1 = beta1
         self.beta2 = beta2
         self.eps = eps
-        self.m = None  # Moments for (weights, biases)
-        self.u = None  # Infinity norm for (weights, biases)
+        self.m = None  # first moment estimate
+        self.u = None  # weighted infinity norm
         self.t = 0
 
     def apply_gradients(self, params, grads):
         if self.m is None or self.u is None:
-            self.m = [(jnp.zeros_like(W), jnp.zeros_like(b)) for (W, b) in params]
-            self.u = [(jnp.zeros_like(W), jnp.zeros_like(b)) for (W, b) in params]
+            self.m = tree.tree_map(jnp.zeros_like, params)
+            self.u = tree.tree_map(jnp.zeros_like, params)
         
         self.t += 1
-        new_params, new_m, new_u = [], [], []
+        # update moments
+        self.m = tree.tree_map(lambda m, g: self.beta1 * m + (1 - self.beta1) * g, 
+                             self.m, grads)
+        self.u = tree.tree_map(lambda u, g: jnp.maximum(self.beta2 * u, jnp.abs(g)), 
+                             self.u, grads)
         
-        for (W, b), (dW, db), (m_w, m_b), (u_w, u_b) in zip(params, grads, self.m, self.u):
-            # Update moments for weights
-            m_w_new = self.beta1 * m_w + (1 - self.beta1) * dW
-            u_w_new = jnp.maximum(self.beta2 * u_w, jnp.abs(dW))
-            W_new = W - self.learning_rate * m_w_new / (u_w_new + self.eps)
-            
-            # Update moments for biases
-            m_b_new = self.beta1 * m_b + (1 - self.beta1) * db
-            u_b_new = jnp.maximum(self.beta2 * u_b, jnp.abs(db))
-            b_new = b - self.learning_rate * m_b_new / (u_b_new + self.eps)
-            
-            new_params.append((W_new, b_new))
-            new_m.append((m_w_new, m_b_new))
-            new_u.append((u_w_new, u_b_new))
+        # bias correction
+        m_hat = tree.tree_map(lambda m: m / (1 - self.beta1 ** self.t), self.m)
         
-        self.m, self.u = new_m, new_u
-        return new_params
+        return tree.tree_map(
+            lambda p, m, u: p - self.learning_rate * m / (u + self.eps),
+            params, m_hat, self.u
+        )
 
 class RMSprop(Optimizer):
     def __init__(self, lr=0.001, rho=0.9, eps=1e-8):
         super().__init__(lr)
         self.rho = rho
         self.eps = eps
-        self.cache = None  # Cache for squared gradients
+        self.cache = None  # moving average of squared gradients
 
     def apply_gradients(self, params, grads):
         if self.cache is None:
-            self.cache = [(jnp.zeros_like(W), jnp.zeros_like(b)) for (W, b) in params]
+            self.cache = tree.tree_map(jnp.zeros_like, params)
         
-        new_params, new_cache = [], []
+        # update cache
+        self.cache = tree.tree_map(
+            lambda c, g: self.rho * c + (1 - self.rho) * jnp.square(g),
+            self.cache, grads
+        )
         
-        for (W, b), (dW, db), (cache_w, cache_b) in zip(params, grads, self.cache):
-            # Update cache for weights
-            cache_w_new = self.rho * cache_w + (1 - self.rho) * (dW ** 2)
-            W_new = W - self.learning_rate * dW / (jnp.sqrt(cache_w_new) + self.eps)
-            
-            # Update cache for biases
-            cache_b_new = self.rho * cache_b + (1 - self.rho) * (db ** 2)
-            b_new = b - self.learning_rate * db / (jnp.sqrt(cache_b_new) + self.eps)
-            
-            new_params.append((W_new, b_new))
-            new_cache.append((cache_w_new, cache_b_new))
-        
-        self.cache = new_cache
-        return new_params
+        return tree.tree_map(
+            lambda p, g, c: p - self.learning_rate * g / (jnp.sqrt(c) + self.eps),
+            params, grads, self.cache
+        )
 
 class Momentum(Optimizer):
     def __init__(self, lr=0.01, momentum=0.9):
         super().__init__(lr)
         self.momentum = momentum
-        self.velocity = None  # Velocity for (weights, biases)
+        self.velocity = None
 
     def apply_gradients(self, params, grads):
         if self.velocity is None:
-            self.velocity = [(jnp.zeros_like(W), jnp.zeros_like(b)) for (W, b) in params]
+            self.velocity = tree.tree_map(jnp.zeros_like, params)
         
-        new_params, new_velocity = [], []
+        # update velocity
+        self.velocity = tree.tree_map(
+            lambda v, g: self.momentum * v - self.learning_rate * g,
+            self.velocity, grads
+        )
         
-        for (W, b), (dW, db), (v_w, v_b) in zip(params, grads, self.velocity):
-            # Update velocity for weights
-            v_w_new = self.momentum * v_w - self.learning_rate * dW
-            W_new = W + v_w_new
-            
-            # Update velocity for biases
-            v_b_new = self.momentum * v_b - self.learning_rate * db
-            b_new = b + v_b_new
-            
-            new_params.append((W_new, b_new))
-            new_velocity.append((v_w_new, v_b_new))
-        
-        self.velocity = new_velocity
-        return new_params
+        return tree.tree_map(jnp.add, params, self.velocity)
 
 class Adafactor(Optimizer):
     def __init__(self, lr=0.001, beta1=0.9, beta2=0.999, eps=1e-30):
@@ -152,100 +114,78 @@ class Adafactor(Optimizer):
         self.beta1 = beta1
         self.beta2 = beta2
         self.eps = eps
-        self.m = None  # Moments for (weights, biases)
-        self.v = None  # Second moments for (weights, biases)
+        self.m = None  # first moment estimate
+        self.v = None  # second moment estimate
         self.t = 0
 
     def apply_gradients(self, params, grads):
         if self.m is None or self.v is None:
-            self.m = [(jnp.zeros_like(W), jnp.zeros_like(b)) for (W, b) in params]
-            self.v = [(jnp.zeros_like(W), jnp.zeros_like(b)) for (W, b) in params]
+            self.m = tree.tree_map(jnp.zeros_like, params)
+            self.v = tree.tree_map(jnp.zeros_like, params)
         
         self.t += 1
-        new_params, new_m, new_v = [], [], []
+        self.m = tree.tree_map(lambda m, g: self.beta1 * m + (1 - self.beta1) * g, self.m, grads)
+        self.v = tree.tree_map(lambda v, g: self.beta2 * v + (1 - self.beta2) * jnp.square(g), self.v, grads)
         
-        for (W, b), (dW, db), (m_w, m_b), (v_w, v_b) in zip(params, grads, self.m, self.v):
-            # Update moments for weights
-            m_w_new = self.beta1 * m_w + (1 - self.beta1) * dW
-            v_w_new = self.beta2 * v_w + (1 - self.beta2) * (dW ** 2)
-            m_w_hat = m_w_new / (1 - self.beta1 ** self.t)
-            v_w_hat = v_w_new / (1 - self.beta2 ** self.t)
-            W_new = W - self.learning_rate * m_w_hat / (jnp.sqrt(v_w_hat) + self.eps)
-            
-            # Update moments for biases
-            m_b_new = self.beta1 * m_b + (1 - self.beta1) * db
-            v_b_new = self.beta2 * v_b + (1 - self.beta2) * (db ** 2)
-            m_b_hat = m_b_new / (1 - self.beta1 ** self.t)
-            v_b_hat = v_b_new / (1 - self.beta2 ** self.t)
-            b_new = b - self.learning_rate * m_b_hat / (jnp.sqrt(v_b_hat) + self.eps)
-            
-            new_params.append((W_new, b_new))
-            new_m.append((m_w_new, m_b_new))
-            new_v.append((v_w_new, v_b_new))
+        m_hat = tree.tree_map(lambda m: m / (1 - self.beta1 ** self.t), self.m)
+        v_hat = tree.tree_map(lambda v: v / (1 - self.beta2 ** self.t), self.v)
         
-        self.m, self.v = new_m, new_v
-        return new_params
+        return tree.tree_map(
+            lambda p, m, v: p - self.learning_rate * m / (jnp.sqrt(v) + self.eps),
+            params, m_hat, v_hat
+        )
 
 class AdaGrad(Optimizer):
     def __init__(self, lr=0.01, eps=1e-8):
         super().__init__(lr)
         self.eps = eps
-        self.cache = None  # Cache for squared gradients
+        self.cache = None  # cache for squared gradients
 
     def apply_gradients(self, params, grads):
         if self.cache is None:
-            self.cache = [(jnp.zeros_like(W), jnp.zeros_like(b)) for (W, b) in params]
+            self.cache = tree.tree_map(jnp.zeros_like, params)
         
-        new_params, new_cache = [], []
+        # update cache
+        self.cache = tree.tree_map(lambda c, g: c + jnp.square(g), self.cache, grads)
         
-        for (W, b), (dW, db), (cache_w, cache_b) in zip(params, grads, self.cache):
-            # Update cache for weights
-            cache_w_new = cache_w + dW ** 2
-            W_new = W - self.learning_rate * dW / (jnp.sqrt(cache_w_new) + self.eps)
-            
-            # Update cache for biases
-            cache_b_new = cache_b + db ** 2
-            b_new = b - self.learning_rate * db / (jnp.sqrt(cache_b_new) + self.eps)
-            
-            new_params.append((W_new, b_new))
-            new_cache.append((cache_w_new, cache_b_new))
-        
-        self.cache = new_cache
-        return new_params
+        return tree.tree_map(
+            lambda p, g, c: p - self.learning_rate * g / (jnp.sqrt(c) + self.eps),
+            params, grads, self.cache
+        )
 
 class Adadelta(Optimizer):
     def __init__(self, rho=0.95, eps=1e-8):
-        super().__init__(1.0)  # Adadelta doesn't use learning rate
+        super().__init__(1.0)  # learning rate not used in Adadelta
         self.rho = rho
         self.eps = eps
-        self.acc_grad = None  # Accumulated gradients
-        self.acc_update = None  # Accumulated updates
+        self.acc_grad = None  # accumulated gradients
+        self.acc_update = None  # accumulated updates
 
     def apply_gradients(self, params, grads):
         if self.acc_grad is None or self.acc_update is None:
-            self.acc_grad = [(jnp.zeros_like(W), jnp.zeros_like(b)) for (W, b) in params]
-            self.acc_update = [(jnp.zeros_like(W), jnp.zeros_like(b)) for (W, b) in params]
+            self.acc_grad = tree.tree_map(jnp.zeros_like, params)
+            self.acc_update = tree.tree_map(jnp.zeros_like, params)
         
-        new_params, new_acc_grad, new_acc_update = [], [], []
+        # update accumulated gradients
+        new_acc_grad = tree.tree_map(
+            lambda acc, g: self.rho * acc + (1 - self.rho) * jnp.square(g),
+            self.acc_grad, grads
+        )
         
-        for (W, b), (dW, db), (acc_grad_w, acc_grad_b), (acc_update_w, acc_update_b) in zip(params, grads, self.acc_grad, self.acc_update):
-            # Update accumulated gradients for weights
-            acc_grad_w_new = self.rho * acc_grad_w + (1 - self.rho) * (dW ** 2)
-            update_w = -jnp.sqrt(acc_update_w + self.eps) / jnp.sqrt(acc_grad_w_new + self.eps) * dW
-            W_new = W + update_w
-            acc_update_w_new = self.rho * acc_update_w + (1 - self.rho) * (update_w ** 2)
-            
-            # Update accumulated gradients for biases
-            acc_grad_b_new = self.rho * acc_grad_b + (1 - self.rho) * (db ** 2)
-            update_b = -jnp.sqrt(acc_update_b + self.eps) / jnp.sqrt(acc_grad_b_new + self.eps) * db
-            b_new = b + update_b
-            acc_update_b_new = self.rho * acc_update_b + (1 - self.rho) * (update_b ** 2)
-            
-            new_params.append((W_new, b_new))
-            new_acc_grad.append((acc_grad_w_new, acc_grad_b_new))
-            new_acc_update.append((acc_update_w_new, acc_update_b_new))
+        # compute updates
+        updates = tree.tree_map(
+            lambda acc_up, acc_grad, g: -jnp.sqrt(acc_up + self.eps) / jnp.sqrt(new_acc_grad + self.eps) * g,
+            self.acc_update, self.acc_grad, grads
+        )
         
-        self.acc_grad, self.acc_update = new_acc_grad, new_acc_update
+        # update parameters and accumulated updates
+        new_params = tree.tree_map(jnp.add, params, updates)
+        new_acc_update = tree.tree_map(
+            lambda acc, upd: self.rho * acc + (1 - self.rho) * jnp.square(upd),
+            self.acc_update, updates
+        )
+        
+        self.acc_grad = new_acc_grad
+        self.acc_update = new_acc_update
+        
         return new_params
-
-
