@@ -4,15 +4,18 @@ from jax import random
 from paxjaxlib.models import NeuralNetwork
 from paxjaxlib.training import Trainer, mse_loss
 from paxjaxlib.activations import relu, linear
+from paxjaxlib.layers import Flatten, Conv2D, Dense
+from paxjaxlib.optimizers import Adam
 
 class TestTrainer(unittest.TestCase):
     def setUp(self):
         key = random.PRNGKey(0)
-        self.model = NeuralNetwork(
-            layer_sizes=[2, 4, 1],
-            activations=[relu, linear],
-            key=key  # Add key
-        )
+        key1, key2 = random.split(key)
+        self.layers = [
+            Dense(2, 4, relu, key1),
+            Dense(4, 1, linear, key2)
+        ]
+        self.model = NeuralNetwork(layers=self.layers)
         self.trainer = Trainer(self.model)
 
     def test_mse_loss(self):
@@ -220,14 +223,14 @@ class TestTrainer(unittest.TestCase):
         # Generate synthetic data with clear linear relationship
         X = jnp.array([[x] for x in jnp.linspace(-1, 1, 20)])
         y = 2 * X + 1 + 0.1 * random.normal(random.PRNGKey(0), X.shape)
-        
+    
         # Create a simple model for this task
         key = random.PRNGKey(0)
-        simple_model = NeuralNetwork(
-            layer_sizes=[1, 1],
-            activations=[linear],
-            key=key  # Add key
-        )
+        key1, key2 = random.split(key)
+        layers = [
+            Dense(1, 1, linear, key1)
+        ]
+        simple_model = NeuralNetwork(layers=layers)
         simple_trainer = Trainer(simple_model, learning_rate=0.01)
         
         # Train the model
@@ -270,7 +273,12 @@ class TestTrainer(unittest.TestCase):
 
     def test_adam_optimizer(self):
         key = random.PRNGKey(0)
-        model = NeuralNetwork([2, 4, 1], [relu, linear], key=key)
+        key1, key2 = random.split(key)
+        layers = [
+            Dense(2, 4, relu, key1),
+            Dense(4, 1, linear, key2)
+        ]
+        model = NeuralNetwork(layers=layers)
         trainer = Trainer(model, optimizer="adam", learning_rate=0.001)
         
         # Perform training step and check parameter updates
@@ -290,7 +298,12 @@ class TestTrainer(unittest.TestCase):
 
     def test_l2_regularization(self):
         key = random.PRNGKey(0)
-        model = NeuralNetwork([2, 4, 1], [relu, linear], key=key)
+        key1, key2 = random.split(key)
+        layers = [
+            Dense(2, 4, relu, key1),
+            Dense(4, 1, linear, key2)
+        ]
+        model = NeuralNetwork(layers=layers)
         trainer = Trainer(model, reg_lambda=0.1)
         X = jnp.array([[1.0, 2.0]])
         y = jnp.array([[3.0]])
@@ -299,15 +312,58 @@ class TestTrainer(unittest.TestCase):
 
     def test_model_serialization(self):
         key = random.PRNGKey(0)
-        model = NeuralNetwork([2, 4, 1], [relu, linear], key=key)
+        key1, key2 = random.split(key)
+        layers = [
+            Dense(2, 4, relu, key1),
+            Dense(4, 1, linear, key2)
+        ]
+        model = NeuralNetwork(layers=layers)
         model.save("test_model.pkl")
-        
-        # Pass a new key when loading the model
-        load_key = random.PRNGKey(1)
-        loaded_model = NeuralNetwork.load([2, 4, 1], [relu, linear], "test_model.pkl", key=load_key)
-        
+    
+        # Load the model
+        loaded_model = NeuralNetwork.load(layers=layers, filename="test_model.pkl")
+    
         self.assertEqual(len(model.parameters), len(loaded_model.parameters))
 
+class TestConvTraining(unittest.TestCase):
+    def setUp(self):
+        key = random.PRNGKey(0)
+        layers = [
+            Conv2D(3, 16, (3, 3), relu, key),
+            Flatten(),
+            Dense(16*28*28, 10, linear, key)
+        ]
+        self.model = NeuralNetwork(layers=layers)
+        self.trainer = Trainer(self.model, optimizer="adam")
+
+    def test_conv_forward(self):
+        X = random.normal(random.PRNGKey(0), (4, 28, 28, 3))
+        params = self.model.parameters
+        output = self.trainer.forward(params, X)
+        self.assertEqual(output.shape, (4, 10))
+
+    def test_conv_gradients(self):
+        X = random.normal(random.PRNGKey(0), (4, 28, 28, 3))
+        y = random.normal(random.PRNGKey(0), (4, 10))
+        
+        # Test gradient shapes
+        _, grads = self.trainer.grad_fn(self.model.parameters, X, y)
+        conv_grads = grads[0]  # Gradients for Conv2D layer
+        self.assertEqual(conv_grads[0].shape, (3, 3, 3, 16))  # Kernel grads
+        self.assertEqual(conv_grads[1].shape, (16,))          # Bias grads
+
+    def test_conv_training_step(self):
+        X = random.normal(random.PRNGKey(0), (4, 28, 28, 3))
+        y = random.normal(random.PRNGKey(0), (4, 10))
+        
+        initial_params = self.model.parameters
+        loss, new_params = self.trainer.train_step(initial_params, X, y)
+        
+        # Verify conv parameters update
+        conv_params_before = initial_params[0]
+        conv_params_after = new_params[0]
+        self.assertFalse(jnp.allclose(conv_params_before[0], conv_params_after[0]))
+        self.assertFalse(jnp.allclose(conv_params_before[1], conv_params_after[1]))
 
 if __name__ == '__main__':
     unittest.main()

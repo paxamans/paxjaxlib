@@ -2,13 +2,12 @@ import jax.numpy as jnp
 from jax import jit, grad, random, value_and_grad
 from typing import Callable, List, Tuple
 from .models import NeuralNetwork
-from .losses import mse_loss  # Import the default loss function
-from .activations import relu, linear  # Import activation functions if needed
+from .losses import mse_loss
+from .activations import relu, linear
 from .optimizers import SGD, Adam, AdaMax, RMSprop, Momentum, Adafactor, AdaGrad, Adadelta
 from .schedules import exponential_decay, step_decay
 
 
-# Move update_params outside the class as a pure function
 @jit
 def update_params(params, grads, learning_rate):
     return [(W - learning_rate * dW, b - learning_rate * db)
@@ -51,16 +50,18 @@ class Trainer:
         self.lr_schedule = lr_schedule
         self.current_step = 0
 
-        # Define forward pass
         def forward(params, X):
             current_input = X
-            for i, (W, b) in enumerate(params):
-                current_input = jnp.dot(current_input, W) + b
-                if i < len(params) - 1:  # Apply activation except for last layer
-                    current_input = self.model.activations[i](current_input)
+            param_idx = 0
+            for layer in self.model.layers:
+                if hasattr(layer, 'parameters') and layer.parameters:
+                    W, b = params[param_idx]
+                    current_input = layer.forward(current_input, W, b)
+                    param_idx += 1
+                else:
+                    current_input = layer.forward(current_input)
             return current_input
-
-        # JIT compile the forward function
+        
         self.forward = jit(forward)
 
         # Define loss with regularization
@@ -71,6 +72,8 @@ class Trainer:
         # JIT compile the loss and gradient functions
         self.loss = jit(loss)
         self.grad_fn = jit(value_and_grad(loss))
+
+
 
     def train_step(self, params, X, y):
         """
@@ -127,12 +130,12 @@ class Trainer:
                 loss, params = self.train_step(params, batch_X, batch_y)
                 epoch_losses.append(loss)
 
+            self.model.parameters = params
+
             avg_loss = jnp.mean(jnp.array(epoch_losses))
             history.append(float(avg_loss))
 
             if verbose and (epoch + 1) % 10 == 0:
                 print(f"Epoch {epoch + 1}/{epochs}, Loss: {avg_loss:.4f}")
 
-        # Update model parameters after training
-        self.model.parameters = params
         return history
