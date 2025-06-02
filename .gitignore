@@ -21,6 +21,8 @@ wheels/
 *.egg
 *.txt
 *.pkl
+setup.py
+
 # Virtual Environment
 venv/
 env/

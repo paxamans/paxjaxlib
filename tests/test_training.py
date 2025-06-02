@@ -7,20 +7,24 @@ from paxjaxlib.activations import relu, linear
 from paxjaxlib.layers import Flatten, Conv2D, Dense
 from paxjaxlib.optimizers import Adam
 
-class TestTrainer(unittest.TestCase):
-    def setUp(self):
-        key = random.PRNGKey(0)
-        key1, key2 = random.split(key)
+class TestTrainer(unittest.TestCase): # This would be around line 10
+    def setUp(self): # <<-- THIS LINE (and all subsequent lines in the method) MUST BE INDENTED
+        self.master_key = random.PRNGKey(0)
+        key_init1, key_init2, self.trainer_key = random.split(self.master_key, 3)
         self.layers = [
-            Dense(2, 4, relu, key1),
-            Dense(4, 1, linear, key2)
+            Dense(2, 4, relu, key_init1),
+            Dense(4, 1, linear, key_init2)
         ]
         self.model = NeuralNetwork(layers=self.layers)
-        self.trainer = Trainer(self.model)
+        self.trainer = Trainer(self.model, key=self.trainer_key) # Added key here as discussed
 
-    def test_mse_loss(self):
+    def test_mse_loss(self): # <<-- THIS AND ALL OTHER METHODS ALSO INDENTED
         y_pred = jnp.array([[1.0], [2.0]])
         y_true = jnp.array([[1.0], [2.0]])
+        # mse_loss is a standalone function, not part of Trainer instance.
+        # If your Trainer instance uses it, that's fine.
+        # If this test is for the loss function itself, call it directly:
+        # from paxjaxlib.losses import mse_loss # At the top
         loss = mse_loss(y_pred, y_true)
         self.assertAlmostEqual(float(loss), 0.0)
 
@@ -32,7 +36,8 @@ class TestTrainer(unittest.TestCase):
         initial_params = self.model.parameters
         
         # Perform training step
-        loss, new_params = self.trainer.train_step(initial_params, X, y)
+        dummy_key_for_step = random.PRNGKey(123)
+        loss, new_params = self.trainer.train_step(initial_params, X, y, dummy_key_for_step) # Pass key
         
         # Verify loss is a float
         self.assertIsInstance(float(loss), float)
@@ -86,11 +91,7 @@ class TestTrainer(unittest.TestCase):
     def test_forward(self):
         X = jnp.array([[1.0, 2.0]])
         params = self.model.parameters
-        
-        # Get prediction
-        y_pred = self.trainer.forward(params, X)
-        
-        # Check prediction shape
+        y_pred = self.trainer.predict(X, params_to_use=params, eval_key=random.PRNGKey(777)) # Use predict
         self.assertEqual(y_pred.shape, (1, 1))
 
     def test_batch_size(self):
@@ -139,8 +140,9 @@ class TestTrainer(unittest.TestCase):
         params = self.model.parameters
     
         # Perform one training step with each trainer
-        _, new_params1 = trainer1.train_step(params, X, y)
-        _, new_params2 = trainer2.train_step(params, X, y)
+        dummy_key_for_step = random.PRNGKey(123)
+        _, new_params1 = trainer1.train_step(params, X, y, dummy_key_for_step) # Pass key
+        _, new_params2 = trainer2.train_step(params, X, y, dummy_key_for_step) # Pass key (can be same for this test's purpose)
     
         # The trainer with higher learning rate should make bigger parameter changes
         for i in range(len(params)):
@@ -183,12 +185,12 @@ class TestTrainer(unittest.TestCase):
         
         # Single sample
         X1 = jnp.array([[1.0, 2.0]])
-        y_pred1 = self.trainer.forward(params, X1)
+        y_pred1 = self.trainer.predict(X1, params_to_use=params, eval_key=random.PRNGKey(2))
         self.assertEqual(y_pred1.shape, (1, 1))
         
         # Multiple samples
         X2 = jnp.array([[1.0, 2.0], [2.0, 3.0], [3.0, 4.0]])
-        y_pred2 = self.trainer.forward(params, X2)
+        y_pred2 = self.trainer.predict(X2, params_to_use=params, eval_key=random.PRNGKey(3))
         self.assertEqual(y_pred2.shape, (3, 1))
 
     def test_loss_computation(self):
@@ -198,7 +200,7 @@ class TestTrainer(unittest.TestCase):
         params = self.model.parameters
         
         # Compute loss
-        loss_val = self.trainer.loss(params, X, y)
+        loss_val = self.trainer.value_and_grad_fn(params, X, y, random.PRNGKey(0))[0]
         
         # Check loss properties
         self.assertIsInstance(float(loss_val), float)
@@ -211,7 +213,7 @@ class TestTrainer(unittest.TestCase):
         params = self.model.parameters
         
         # Compute loss and gradients
-        loss_val, grads = self.trainer.grad_fn(params, X, y)
+        loss_val, grads = self.trainer.value_and_grad_fn(params, X, y, random.PRNGKey(0))
         
         # Check gradient shapes match parameter shapes
         for (W, b), (dW, db) in zip(params, grads):
@@ -247,17 +249,21 @@ class TestTrainer(unittest.TestCase):
         self.assertLess(final_loss, initial_loss / 2)
 
     def test_zero_gradient(self):
-        # Test gradient behavior with perfect predictions
         X = jnp.array([[1.0, 2.0]])
-        y = jnp.array([[3.0]])
-        
-        # Set up a scenario where prediction equals target
+        # Construct parameters and y such that the model's prediction is perfect
+        # This might require manual setting or a simpler model/scenario
+        # For simplicity, let's assume we can find such params or use a fixed output
+        # For this example, let's use the output of the forward pass as the target
         params = self.model.parameters
-        y_pred = self.trainer.forward(params, X)
-        
-        # Compute loss with perfect predictions
-        loss_val = mse_loss(y_pred, y_pred)  # Using same values for prediction and target
-        self.assertAlmostEqual(float(loss_val), 0.0)
+        y_perfect_pred = self.trainer.predict(X, params_to_use=params, eval_key=random.PRNGKey(5))
+
+        # Use value_and_grad_fn, providing a dummy key as it's required by the signature
+        loss_val, grads = self.trainer.value_and_grad_fn(params, X, y_perfect_pred, random.PRNGKey(0))
+    
+        self.assertAlmostEqual(float(loss_val), 0.0, places=5)
+        for dW, db in grads: # Assuming (dW, db) structure
+            self.assertTrue(jnp.allclose(dW, jnp.zeros_like(dW), atol=1e-6))
+            self.assertTrue(jnp.allclose(db, jnp.zeros_like(db), atol=1e-6))
 
     def test_batch_independence(self):
         # Test that training with different batch orders gives similar results
@@ -284,8 +290,9 @@ class TestTrainer(unittest.TestCase):
         # Perform training step and check parameter updates
         X = jnp.array([[1.0, 2.0]])
         y = jnp.array([[3.0]])
-        initial_params = model.parameters.copy()
-        loss, new_params = trainer.train_step(initial_params, X, y)
+        initial_params = model.parameters # .copy() is not standard for list of tuples from JAX model params
+        dummy_key_for_step = random.PRNGKey(123) # Add a dummy key
+        loss, new_params = trainer.train_step(initial_params, X, y, dummy_key_for_step)
         
         # Ensure parameters have changed
         for (W_before, b_before), (W_after, b_after) in zip(initial_params, new_params):
@@ -307,7 +314,7 @@ class TestTrainer(unittest.TestCase):
         trainer = Trainer(model, reg_lambda=0.1)
         X = jnp.array([[1.0, 2.0]])
         y = jnp.array([[3.0]])
-        loss_val = trainer.loss(model.parameters, X, y)
+        loss_val = self.trainer.value_and_grad_fn(model.parameters, X, y, key)[0]
         self.assertGreater(loss_val, 0)  # Loss should include L2 term
 
     def test_model_serialization(self):
@@ -319,11 +326,13 @@ class TestTrainer(unittest.TestCase):
         ]
         model = NeuralNetwork(layers=layers)
         model.save("test_model.pkl")
-    
-        # Load the model
         loaded_model = NeuralNetwork.load(layers=layers, filename="test_model.pkl")
     
         self.assertEqual(len(model.parameters), len(loaded_model.parameters))
+        for p_orig, p_loaded in zip(model.parameters, loaded_model.parameters):
+            # Assuming parameters are (W, b) tuples
+            self.assertTrue(jnp.allclose(p_orig[0], p_loaded[0])) # Compare W
+            self.assertTrue(jnp.allclose(p_orig[1], p_loaded[1])) # Compare b
 
 class TestConvTraining(unittest.TestCase):
     def setUp(self):
@@ -339,7 +348,7 @@ class TestConvTraining(unittest.TestCase):
     def test_conv_forward(self):
         X = random.normal(random.PRNGKey(0), (4, 28, 28, 3))
         params = self.model.parameters
-        output = self.trainer.forward(params, X)
+        output = self.trainer.predict(X, params_to_use=params)
         self.assertEqual(output.shape, (4, 10))
 
     def test_conv_gradients(self):
@@ -347,7 +356,7 @@ class TestConvTraining(unittest.TestCase):
         y = random.normal(random.PRNGKey(0), (4, 10))
         
         # Test gradient shapes
-        _, grads = self.trainer.grad_fn(self.model.parameters, X, y)
+        _, grads = self.trainer.value_and_grad_fn(self.model.parameters, X, y, random.PRNGKey(0))
         conv_grads = grads[0]  # Gradients for Conv2D layer
         self.assertEqual(conv_grads[0].shape, (3, 3, 3, 16))  # Kernel grads
         self.assertEqual(conv_grads[1].shape, (16,))          # Bias grads
@@ -357,7 +366,8 @@ class TestConvTraining(unittest.TestCase):
         y = random.normal(random.PRNGKey(0), (4, 10))
         
         initial_params = self.model.parameters
-        loss, new_params = self.trainer.train_step(initial_params, X, y)
+        dummy_key_for_step = random.PRNGKey(123)
+        loss, new_params = self.trainer.train_step(initial_params, X, y, dummy_key_for_step) # Pass key
         
         # Verify conv parameters update
         conv_params_before = initial_params[0]

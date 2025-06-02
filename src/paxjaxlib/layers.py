@@ -1,7 +1,54 @@
 import jax.numpy as jnp
 from jax import random
-from typing import Callable, Tuple
+from typing import Callable, Tuple, Optional
 import jax.lax as lax
+
+class Dropout:
+    """Dropout Layer"""
+    def __init__(self, rate: float):
+        """
+        Initialize the Dropout layer.
+
+        Args:
+            rate (float): Fraction of the input units to drop (e.g., 0.5 means 50% drop).
+                          Must be in the interval [0, 1).
+        """
+        if not (0.0 <= rate < 1.0):
+            raise ValueError("Dropout rate must be in the interval [0, 1). rate=1.0 would zero everything.")
+        self.rate = rate
+
+    def forward(self, X: jnp.ndarray, training: bool = False, key: Optional[random.PRNGKey] = None) -> jnp.ndarray:
+        """
+        Apply dropout. Uses inverted dropout.
+
+        Args:
+            X (jnp.ndarray): Input data.
+            training (bool): If True, applies dropout. Otherwise, returns the input as is.
+            key (Optional[random.PRNGKey]): JAX PRNGKey for dropout.
+                                             Required if training is True and rate > 0.
+
+        Returns:
+            jnp.ndarray: Output after applying dropout (if training) or the original input.
+        """
+        if not training or self.rate == 0.0:
+            return X
+
+        if key is None: # Key is required only if training and rate > 0
+            raise ValueError("Dropout layer requires a PRNGKey for the forward pass during training when rate > 0.")
+
+        keep_prob = 1.0 - self.rate
+        # Create a mask by drawing from a Bernoulli distribution
+        mask = random.bernoulli(key, p=keep_prob, shape=X.shape)
+        # Apply mask and scale up during training (inverted dropout)
+        return (X * mask) / keep_prob
+
+    @property
+    def parameters(self) -> Tuple: # Dropout has no learnable parameters
+        return ()
+
+    @parameters.setter
+    def parameters(self, params: Tuple): # No parameters to set
+        pass
 
 class Conv2D:
     """2D Convolutional Layer"""
@@ -83,7 +130,7 @@ class Dense:
     def forward(self, X: jnp.ndarray, W=None, b=None) -> jnp.ndarray:
         W = self.W if W is None else W
         b = self.b if b is None else b
-        return self.activation(jnp.dot(X, W)) + b
+        return self.activation(jnp.dot(X, W) + b)
 
     @property
     def parameters(self) -> Tuple[jnp.ndarray, jnp.ndarray]:

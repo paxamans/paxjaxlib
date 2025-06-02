@@ -171,11 +171,11 @@ class Adadelta(Optimizer):
             lambda acc, g: self.rho * acc + (1 - self.rho) * jnp.square(g),
             self.acc_grad, grads
         )
-        
-        # compute updates
+    
+        # Corrected updates calculation:
         updates = tree.tree_map(
-            lambda acc_up, acc_grad, g: -jnp.sqrt(acc_up + self.eps) / jnp.sqrt(new_acc_grad + self.eps) * g,
-            self.acc_update, self.acc_grad, grads
+            lambda acc_up, curr_acc_g, g: -(jnp.sqrt(acc_up + self.eps) / jnp.sqrt(curr_acc_g + self.eps)) * g,
+            self.acc_update, new_acc_grad, grads  
         )
         
         # update parameters and accumulated updates
