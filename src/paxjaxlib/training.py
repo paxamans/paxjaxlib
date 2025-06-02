@@ -1,14 +1,12 @@
 import jax.numpy as jnp
 from jax import jit, grad, random, value_and_grad
-from typing import Callable, List, Tuple, Optional # Added Optional
-import inspect # For inspecting layer forward method signatures
+from typing import Callable, List, Tuple, Optional 
+import inspect 
 
 from .models import NeuralNetwork
-from .losses import mse_loss # and other losses
-# from .activations import relu, linear # (if needed directly)
+from .losses import mse_loss 
 from .optimizers import SGD, Adam, AdaMax, RMSprop, Momentum, Adafactor, AdaGrad, Adadelta
-# from .schedules import exponential_decay, step_decay # (if needed directly)
-# from .layers import Dropout # For isinstance check, or use globals().get('Dropout')
+from .layers import Dropout
 
 @jit
 def update_params(params, grads, learning_rate): # This is SGD specific, optimizers handle their own logic
@@ -95,7 +93,7 @@ class Trainer:
                     call_kwargs['training'] = training_mode
             
                 if 'key' in layer_sig.parameters:
-                    is_dropout = isinstance(layer_obj, globals().get('Dropout', type(None)))
+                    is_dropout = isinstance(layer_obj, Dropout)
                     if is_dropout and training_mode and hasattr(layer_obj, 'rate') and layer_obj.rate > 0.0:
                         if current_dropout_key_for_loop is None: # Check the loop key
                             raise ValueError("Trainer's forward pass requires a dropout_key for Dropout layers in training.")
@@ -105,7 +103,7 @@ class Trainer:
                 current_input = layer_obj.forward(current_input, **call_kwargs)
             return current_input
     
-        self.forward_internal = jit(_model_forward_with_explicit_params)
+        self.forward_internal = jit(_model_forward_with_explicit_params, static_argnums=(2,))
 
         def loss_for_grad(
             params_for_loss: List[Tuple], 
