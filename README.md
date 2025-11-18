@@ -8,11 +8,13 @@ A simple neural network implementation using JAX.
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 1.  Clone the repository:
-    git clone https://github.com/paxamans/paxjaxlib.git
+   #   
+     git clone https://github.com/paxamans/paxjaxlib.git
 
 2.  Install in development mode with dependencies:
+   #
     pip install -e .[dev]
-
+3.
     Dependencies:
     - jax
     - jaxlib
