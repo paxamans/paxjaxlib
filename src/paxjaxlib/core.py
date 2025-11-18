@@ -14,58 +14,41 @@ class Module:
             cls._tree_unflatten,
         )
 
-    def _tree_flatten(self) -> Tuple[List[Any], Dict[str, Any]]:
+    def _tree_flatten(self) -> Tuple[List[Any], Tuple[List[str], Dict[str, Any]]]:
         """
-        Flatten the module into leaves (JAX arrays/Modules) and aux_data (static config).
-        By default, we treat all instance attributes as leaves if they are JAX types or Modules,
-        and everything else as static aux_data.
-        However, for simplicity and robustness in this custom implementation,
-        we will treat ALL attributes as potential leaves if they are not callables or dunder methods.
-        JAX's tree_flatten will recursively handle them.
-        
-        Actually, a safer approach for a custom library without complex filtering 
-        is to assume everything in __dict__ is a child node unless specified otherwise.
-        But to distinguish static config (int, str, tuple of ints) from parameters (arrays),
-        we rely on JAX's default behavior for standard types.
-        
-        The tricky part is distinguishing what should be static (aux_data) vs dynamic (children).
-        In Equinox, this is done with dataclasses and type filtering.
-        Here, we'll use a simple heuristic:
-        - JAX arrays, Modules, and lists/dicts/tuples of them are children.
-        - Primitives (int, float, str, bool, None) and tuples of them are aux_data.
-        
-        Wait, JAX's register_pytree_node expects:
-        flatten(x) -> (children, aux_data)
-        unflatten(aux_data, children) -> x
-        
-        If we put everything in children, JAX handles it. But static args to __init__ need to be aux_data
-        if we want to reconstruct the object.
-        BUT, we are not reconstructing via __init__ in unflatten usually, we use __new__ and set state.
-        
-        Let's use the standard pattern:
-        Children = vars(self).values()
-        Aux = vars(self).keys()
+        Flattens the module into dynamic children (JAX arrays, Modules) and static aux_data.
         """
         children = []
-        aux_data = []
-        keys = []
+        dynamic_keys = []
+        static_data = {}
         
         # Sort keys to ensure deterministic order
         sorted_keys = sorted(vars(self).keys())
         
         for key in sorted_keys:
             val = getattr(self, key)
-            children.append(val)
-            keys.append(key)
+            if isinstance(val, (jax.numpy.ndarray, Module)) or \
+               (isinstance(val, list) and all(isinstance(v, Module) for v in val)):
+                children.append(val)
+                dynamic_keys.append(key)
+            else:
+                static_data[key] = val
             
-        return children, keys
+        return children, (dynamic_keys, static_data)
 
     @classmethod
-    def _tree_unflatten(cls, keys: List[str], children: List[Any]):
+    def _tree_unflatten(cls, aux_data: Tuple[List[str], Dict[str, Any]], children: List[Any]):
         """
-        Reconstruct the module.
+        Reconstruct the module from dynamic children and static aux_data.
         """
+        dynamic_keys, static_data = aux_data
         module = object.__new__(cls)
-        for key, val in zip(keys, children):
+        
+        # Restore static data
+        vars(module).update(static_data)
+
+        # Restore dynamic children
+        for key, val in zip(dynamic_keys, children):
             setattr(module, key, val)
+            
         return module
