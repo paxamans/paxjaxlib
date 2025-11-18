@@ -107,7 +107,14 @@ pip install -e .
 python -m pytest tests/
 ```
 
-5. Run the example:
+If you want to proceed with CNN for MNIST, install more pip packages so that you are able to download MNIST dataset.
+
+5. Install dependencies for MNIST dataset
+```bash
+pip install tensorflow_datasets tensorflow
+```
+
+6. Run the example:
 ```bash
 python examples/usage.py
 ```
