@@ -1,5 +1,4 @@
 # schedules.py
-import jax.numpy as jnp
 
 def exponential_decay(initial_lr: float, decay_rate: float, decay_steps: int):
     def scheduler(step):

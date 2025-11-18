@@ -1,5 +1,6 @@
 import jax.numpy as jnp
 
+
 def mse_loss(y_pred, y_true, params=None, reg_lambda=0.01):
     loss = jnp.mean((y_pred - y_true) ** 2)
     if params is not None and reg_lambda > 0:

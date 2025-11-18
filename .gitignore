@@ -19,9 +19,9 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
-*.txt
+
 *.pkl
-setup.py
+
 
 # Virtual Environment
 venv/
