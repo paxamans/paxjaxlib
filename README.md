@@ -1,122 +1,85 @@
-# Neural Network Implementation in JAX
+PAXJAXLIB
+===========
 
-A simple neural network implementation using JAX
+A simple neural network implementation using JAX.
 
-## Installation
-1. Install python accordingly and run virtual envirnoment
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                                 INSTALLATION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-<details>
-<summary>MacOS Installation Guide</summary>
+1.  Clone the repository:
+    git clone https://github.com/paxamans/paxjaxlib.git
 
-### Installing Python on MacOS
-1. Using Homebrew:
-```bash
-brew install python
-```
-2. Or download from [Python's official website](https://www.python.org/downloads/macos/)
+2.  Install in development mode with dependencies:
+    pip install -e .[dev]
 
-### Creating Virtual Environment on MacOS
-```bash
-# Navigate to your project directory
-cd your_project
+    Dependencies:
+    - jax
+    - jaxlib
+    - numpy
+    - optax
 
-# Create virtual environment
-python3 -m venv venv
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                                 ARCHITECTURE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-# Activate virtual environment
-source venv/bin/activate
+The library has been re-architected to strictly follow JAX functional patterns.
 
-# To deactivate
-deactivate
-```
-</details>
+[ MODULE SYSTEM ]
+All layers and models now inherit from `paxjaxlib.core.Module`. This base class
+automatically registers the object as a JAX Pytree. This means:
+-   Models are stateless data structures.
+-   Parameters are stored as attributes on the object.
+-   Gradients can be computed directly with respect to the model object.
 
-<details>
-<summary>Windows Installation Guide</summary>
+[ OPTIMIZATION ]
+We have integrated `optax` for optimization. The `Trainer` class now accepts
+any `optax` gradient transformation.
+-   State: (model, opt_state)
+-   Update: optax.apply_updates(model, updates)
 
-### Installing Python on Windows
-1. Download Python installer from [Python's official website](https://www.python.org/downloads/windows/)
-2. Run the installer (Make sure to check "Add Python to PATH")
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                                  CHANGELOG
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-### Creating Virtual Environment on Windows
-```bash
-# Navigate to your project directory
-cd your_project
+[ 2025-11-18 ] CONFIGURATION MODERNIZATION
+------------------------------------------
+•   Introduced `pyproject.toml` for centralized build and tool configuration.
+•   Added `ruff` for linting and formatting.
+•   Added `mypy` for static type checking.
+•   Configured `pytest` for testing.
+•   Added GitHub Actions CI workflow (`.github/workflows/ci.yml`).
+•   Added pre-commit hooks (`.pre-commit-config.yaml`).
+•   Fixed `.gitignore` to correctly track `setup.py` and requirements.
 
-# Create virtual environment
-python -m venv venv
+[ 2025-11-18 ] ARCHITECTURE REFACTOR
+------------------------------------
+•   REMOVED: Custom `optimizers.py`. Replaced with `optax`.
+•   REMOVED: Manual parameter management in `NeuralNetwork`.
+•   ADDED: `paxjaxlib.core.Module` for automatic Pytree registration.
+•   MODIFIED: `Trainer` now handles `opt_state` explicitly.
+•   MODIFIED: `NeuralNetwork` and Layers now inherit from `Module`.
+•   UPDATED: `examples/usage.py` to reflect the new API.
 
-# Activate virtual environment
-venv\Scripts\activate
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                                    USAGE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-# To deactivate
-deactivate
-```
-</details>
+See `examples/usage.py` for a complete MNIST training example.
 
-<details>
-<summary>Linux Installation Guide</summary>
+Basic Flow:
+    import jax
+    import optax
+    from paxjaxlib import NeuralNetwork, Dense, Trainer
 
-### Installing Python on Linux
-#### Ubuntu/Debian:
-```bash
-sudo apt update
-sudo apt install python3
-```
+    # 1. Define Model
+    layers = [Dense(10, 5, jax.random.PRNGKey(0))]
+    model = NeuralNetwork(layers)
 
-#### Fedora:
-```bash
-sudo dnf install python3
-```
+    # 2. Initialize Trainer
+    trainer = Trainer(model, optimizer=optax.adam(1e-3))
 
-#### Arch Linux:
-```bash
-sudo pacman -S python
-```
+    # 3. Train
+    history = trainer.train(X, y, epochs=10)
 
-### Creating Virtual Environment on Linux
-```bash
-# Navigate to your project directory
-cd your_project
-
-# Create virtual environment
-python3 -m venv venv
-
-# Activate virtual environment
-source venv/bin/activate
-
-# To deactivate
-deactivate
-```
-</details>
-
-2. git clone and install requirements
-```bash
-git clone https://github.com/paxamans/paxjaxlib.git
-```
-```bash
-pip install -r requirements.txt
-```
-3. Install the package in development mode:
-```bash
-pip install -e .
-```
-
-4. Run tests:
-```bash
-python -m pytest tests/
-```
-
-If you want to proceed with CNN for MNIST, install more pip packages so that you are able to download MNIST dataset.
-
-5. Install dependencies for MNIST dataset
-```bash
-pip install tensorflow_datasets tensorflow
-```
-
-6. Run the example:
-```bash
-python examples/usage.py
-```
-
-
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
