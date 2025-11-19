@@ -1,4 +1,3 @@
-
 import jax
 import jax.numpy as jnp
 import optax
@@ -20,21 +19,28 @@ from paxjaxlib import (
 )
 
 # --- Configuration ---
-tf.config.experimental.set_visible_devices([], 'GPU')
+tf.config.experimental.set_visible_devices([], "GPU")
+
 
 # --- 1. Load and Preprocess MNIST Data ---
 def load_and_preprocess_data():
     print("Loading MNIST dataset...")
-    ds_builder = tfds.builder('mnist')
+    ds_builder = tfds.builder("mnist")
     ds_builder.download_and_prepare()
-    datasets = ds_builder.as_dataset(split=['train', 'test'], as_supervised=True)
+    datasets = ds_builder.as_dataset(split=["train", "test"], as_supervised=True)
     train_ds, test_ds = datasets[0], datasets[1]
 
     def preprocess(image, label):
         image = tf.cast(image, tf.float32) / 255.0
         return image, label
 
-    train_ds = train_ds.map(preprocess).cache().shuffle(10000).batch(128).prefetch(tf.data.AUTOTUNE)
+    train_ds = (
+        train_ds.map(preprocess)
+        .cache()
+        .shuffle(10000)
+        .batch(128)
+        .prefetch(tf.data.AUTOTUNE)
+    )
     test_ds = test_ds.map(preprocess).batch(1024).prefetch(tf.data.AUTOTUNE)
 
     # Convert to JAX arrays
@@ -56,8 +62,9 @@ def load_and_preprocess_data():
     num_classes = 10
     y_train_jax_one_hot = jax.nn.one_hot(y_train_jax, num_classes)
     y_test_jax_one_hot = jax.nn.one_hot(y_test_jax, num_classes)
-    
+
     return X_train_jax, y_train_jax_one_hot, X_test_jax, y_test_jax_one_hot, y_test_jax
+
 
 X_train, y_train, X_test, y_test_one_hot, y_test_labels = load_and_preprocess_data()
 
@@ -69,12 +76,28 @@ key_layers_init, key_trainer_init = random.split(key_master)
 keys_for_layers = random.split(key_layers_init, 4)
 
 layers = [
-    Conv2D(input_channels=1, output_channels=16, kernel_size=(3,3), activation=relu, key=keys_for_layers[0], padding="SAME"),
-    Conv2D(input_channels=16, output_channels=32, kernel_size=(3,3), activation=relu, key=keys_for_layers[1], padding="SAME"),
+    Conv2D(
+        input_channels=1,
+        output_channels=16,
+        kernel_size=(3, 3),
+        activation=relu,
+        key=keys_for_layers[0],
+        padding="SAME",
+    ),
+    Conv2D(
+        input_channels=16,
+        output_channels=32,
+        kernel_size=(3, 3),
+        activation=relu,
+        key=keys_for_layers[1],
+        padding="SAME",
+    ),
     Flatten(),
-    Dense(input_dim=28*28*32, output_dim=128, activation=relu, key=keys_for_layers[2]),
+    Dense(
+        input_dim=28 * 28 * 32, output_dim=128, activation=relu, key=keys_for_layers[2]
+    ),
     Dropout(rate=0.5),
-    Dense(input_dim=128, output_dim=10, activation=softmax, key=keys_for_layers[3])
+    Dense(input_dim=128, output_dim=10, activation=softmax, key=keys_for_layers[3]),
 ]
 
 model = NeuralNetwork(layers)
@@ -85,25 +108,27 @@ trainer = Trainer(
     model=model,
     loss_fn=categorical_crossentropy,
     optimizer=optax.adam(learning_rate=0.001),
-    key=key_trainer_init
+    key=key_trainer_init,
 )
 print("\nTrainer initialized with Adam optimizer.")
 
 # --- 4. Train the Model ---
 print("\nStarting training...")
-epochs = 2 # Quick test
-batch_size = 128 
-history = trainer.train(X_train, y_train, epochs=epochs, batch_size=batch_size, verbose=True)
+epochs = 2  # Quick test
+batch_size = 128
+history = trainer.train(
+    X_train, y_train, epochs=epochs, batch_size=batch_size, verbose=True
+)
 
 print("\nTraining finished.")
-print("Training history (loss per epoch):", [f"{l:.4f}" for l in history])
+print("Training history (loss per epoch):", [f"{val:.4f}" for val in history])
 
 # --- 5. Evaluate the Model ---
 print("\nEvaluating model...")
 y_pred_test_probs = trainer.predict(X_test)
 predicted_classes = jnp.argmax(y_pred_test_probs, axis=1)
 
-accuracy = jnp.mean(predicted_classes == y_test_labels) 
+accuracy = jnp.mean(predicted_classes == y_test_labels)
 print(f"Test Accuracy: {accuracy * 100:.2f}%")
 
 # --- 6. Save and Load Model ---
