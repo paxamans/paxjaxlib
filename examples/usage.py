@@ -94,7 +94,10 @@ layers = [
     ),
     Flatten(),
     Dense(
-        input_dim=28 * 28 * 32, output_dim=128, activation=relu, key=keys_for_layers[2]
+        input_dim=28 * 28 * 32,
+        output_dim=128,
+        activation=relu,
+        key=keys_for_layers[2],
     ),
     Dropout(rate=0.5),
     Dense(input_dim=128, output_dim=10, activation=softmax, key=keys_for_layers[3]),
@@ -121,7 +124,7 @@ history = trainer.train(
 )
 
 print("\nTraining finished.")
-print("Training history (loss per epoch):", [f"{val:.4f}" for val in history])
+print("Training history (loss per epoch):", [f"{loss:.4f}" for loss in history])
 
 # --- 5. Evaluate the Model ---
 print("\nEvaluating model...")

@@ -1,87 +1,89 @@
-PAXJAXLIB
-===========
+<p align="center">
+  <h1 align="center">paxjaxlib</h1>
+  <p align="center">A simple and functional neural network library built on <a href="https://github.com/google/jax">JAX</a>.</p>
+</p>
 
-A simple neural network implementation using JAX.
+<p align="center">
+  <a href="https://github.com/paxamans/paxjaxlib/actions/workflows/ci.yml">
+    <img src="https://github.com/paxamans/paxjaxlib/actions/workflows/ci.yml/badge.svg" alt="CI">
+  </a>
+  <a href="https://badge.fury.io/py/paxjaxlib">
+    <img src="https://badge.fury.io/py/paxjaxlib.svg" alt="PyPI version">
+  </a>
+</p>
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-                                 INSTALLATION
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+---
 
-1.  Clone the repository:
-   #   
-     git clone https://github.com/paxamans/paxjaxlib.git
+**paxjaxlib** is a lightweight and modular deep learning library that embraces JAX's functional programming paradigm. Just a simple, yet powerful, API for building and training neural networks.
 
-2.  Install in development mode with dependencies:
-   #
-    pip install -e .[dev]
-3.
-    Dependencies:
-    - jax
-    - jaxlib
-    - numpy
-    - optax
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-                                 ARCHITECTURE
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## Installation
 
-The library has been re-architected to strictly follow JAX functional patterns.
+You can install `paxjaxlib` directly from PyPI:
 
-[ MODULE SYSTEM ]
-All layers and models now inherit from `paxjaxlib.core.Module`. This base class
-automatically registers the object as a JAX Pytree. This means:
--   Models are stateless data structures.
--   Parameters are stored as attributes on the object.
--   Gradients can be computed directly with respect to the model object.
+```bash
+pip install paxjaxlib
+```
 
-[ OPTIMIZATION ]
-We have integrated `optax` for optimization. The `Trainer` class now accepts
-any `optax` gradient transformation.
--   State: (model, opt_state)
--   Update: optax.apply_updates(model, updates)
+Or, for development, clone the repository and install in editable mode:
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-                                  CHANGELOG
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+```bash
+git clone https://github.com/paxamans/paxjaxlib.git
+cd paxjaxlib
+pip install -e .[dev]
+```
 
-[ 2025-11-18 ] CONFIGURATION MODERNIZATION
-------------------------------------------
-•   Introduced `pyproject.toml` for centralized build and tool configuration.
-•   Added `ruff` for linting and formatting.
-•   Added `mypy` for static type checking.
-•   Configured `pytest` for testing.
-•   Added GitHub Actions CI workflow (`.github/workflows/ci.yml`).
-•   Added pre-commit hooks (`.pre-commit-config.yaml`).
-•   Fixed `.gitignore` to correctly track `setup.py` and requirements.
+## Quick Start
 
-[ 2025-11-18 ] ARCHITECTURE REFACTOR
-------------------------------------
-•   REMOVED: Custom `optimizers.py`. Replaced with `optax`.
-•   REMOVED: Manual parameter management in `NeuralNetwork`.
-•   ADDED: `paxjaxlib.core.Module` for automatic Pytree registration.
-•   MODIFIED: `Trainer` now handles `opt_state` explicitly.
-•   MODIFIED: `NeuralNetwork` and Layers now inherit from `Module`.
-•   UPDATED: `examples/usage.py` to reflect the new API.
+Here's a quick example of how to define, train, and evaluate a simple `NeuralNetwork` on dummy data.
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-                                    USAGE
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+```python
+import jax
+import jax.numpy as jnp
+import optax
+from paxjaxlib.layers import Dense
+from paxjaxlib.models import NeuralNetwork
+from paxjaxlib.training import Trainer
 
-See `examples/usage.py` for a complete MNIST training example.
+# 1. Generate dummy data
+key = jax.random.PRNGKey(0)
+X = jax.random.normal(key, (100, 10))
+y = jax.random.normal(key, (100, 1))
 
-Basic Flow:
-    import jax
-    import optax
-    from paxjaxlib import NeuralNetwork, Dense, Trainer
+# 2. Define the model
+# The model is a pytree, so its parameters can be manipulated functionally.
+model = NeuralNetwork([
+    Dense(10, 64),
+    jax.nn.relu,
+    Dense(64, 1)
+])
 
-    # 1. Define Model
-    layers = [Dense(10, 5, jax.random.PRNGKey(0))]
-    model = NeuralNetwork(layers)
+# 3. Initialize the trainer with an Optax optimizer
+# The trainer manages the training loop and state.
+trainer = Trainer(model, optimizer=optax.adam(1e-3))
 
-    # 2. Initialize Trainer
-    trainer = Trainer(model, optimizer=optax.adam(1e-3))
+# 4. Train the model
+# The `train` method returns a history of metrics.
+history = trainer.train(X, y, epochs=10, batch_size=32)
+print("Training loss:", history['loss'][-1])
 
-    # 3. Train
-    history = trainer.train(X, y, epochs=10)
+# 5. Make predictions
+# The trained model is available at `trainer.model`.
+predictions = trainer.model(X)
+```
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## Architecture
+
+The core of `paxjaxlib` is the `paxjaxlib.core.Module`, which serves as the base for all layers and models. By inheriting from `Module`, classes are automatically registered as JAX pytrees.
+
+- **Models are data**: A `NeuralNetwork` or `Dense` layer is a simple data structure. All parameters are stored as attributes.
+- **Stateless updates**: Training updates produce a new, updated model object instead of modifying an existing one in place.
+- **Gradients with respect to models**: You can compute gradients directly with respect to the entire model object, for example: `grads = jax.grad(loss_fn)(model, X, y)`.
+
+## Wiki & Documentation
+
+Coming soon
+
+## License
+
+This project is licensed under the GNU GENERAL PUBLIC LICENSE.
