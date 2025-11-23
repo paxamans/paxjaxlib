@@ -20,7 +20,9 @@ def tanh(x):
 
 
 def softmax(x):
-    return jnp.exp(x) / jnp.sum(jnp.exp(x), axis=-1, keepdims=True)
+    x_max = jnp.max(x, axis=-1, keepdims=True)
+    unnormalized = jnp.exp(x - x_max)
+    return unnormalized / jnp.sum(unnormalized, axis=-1, keepdims=True)
 
 
 def gelu(x):
@@ -32,4 +34,4 @@ def silu(x):
 
 
 def mish(x):
-    return x * jnp.tanh(jax.nn.softplus(x))
+    return jax.nn.mish(x)

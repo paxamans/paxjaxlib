@@ -37,8 +37,10 @@ class Trainer:
         # JIT compile the update step
         self._update_step = jit(self._update_step_impl)
 
-    def _loss_fn_wrapper(self, model: NeuralNetwork, X: jnp.ndarray, y: jnp.ndarray):
-        y_pred = model(X, training=True)
+    def _loss_fn_wrapper(
+        self, model: NeuralNetwork, X: jnp.ndarray, y: jnp.ndarray, key: Optional[Any]
+    ):
+        y_pred = model(X, key=key, training=True)
         loss = self.loss_fn(y_pred, y)
         total_loss = loss + jnp.sum(jnp.array(model.losses))
         return total_loss
@@ -65,8 +67,11 @@ class Trainer:
         opt_state,
         X: jnp.ndarray,
         y: jnp.ndarray,
+        key: Optional[Any],
     ):
-        loss_val, grads = value_and_grad(self._loss_fn_wrapper, argnums=0)(model, X, y)
+        loss_val, grads = value_and_grad(self._loss_fn_wrapper, argnums=0)(
+            model, X, y, key
+        )
         updates, new_opt_state = self.optimizer.update(grads, opt_state, model)
         new_model = optax.apply_updates(model, updates)
         return new_model, new_opt_state, loss_val
@@ -112,7 +117,7 @@ class Trainer:
                 key_iter, step_key = random.split(key_iter)
 
                 self.model, self.opt_state, loss = self._update_step(
-                    self.model, self.opt_state, batch_X, batch_y
+                    self.model, self.opt_state, batch_X, batch_y, step_key
                 )
                 epoch_losses.append(loss)
 

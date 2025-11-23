@@ -91,6 +91,16 @@ class Conv2D(Module):
         )
         self.b = self.bias_initializer(key, (self.output_channels,))
 
+    @property
+    def params(self):
+        return {"W": self.W, "b": self.b}
+
+    @params.setter
+    def params(self, value):
+        if isinstance(value, dict):
+            self.W = value["W"]
+            self.b = value["b"]
+
     def __call__(self, X: jnp.ndarray, training: bool = False) -> jnp.ndarray:
         if training:
             if self.kernel_regularizer:
@@ -192,8 +202,24 @@ class BatchNorm(Module):
         self.epsilon = epsilon
         self.gamma = jnp.ones(input_dim)
         self.beta = jnp.zeros(input_dim)
-        self.running_mean = jnp.zeros(input_dim)
         self.running_var = jnp.ones(input_dim)
+
+    @property
+    def params(self):
+        return {
+            "gamma": self.gamma,
+            "beta": self.beta,
+            "running_mean": self.running_mean,
+            "running_var": self.running_var,
+        }
+
+    @params.setter
+    def params(self, value):
+        if isinstance(value, dict):
+            self.gamma = value["gamma"]
+            self.beta = value["beta"]
+            self.running_mean = value["running_mean"]
+            self.running_var = value["running_var"]
 
     def __call__(self, X: jnp.ndarray, training: bool = False) -> jnp.ndarray:
         if training:
@@ -227,6 +253,16 @@ class LayerNorm(Module):
             else:
                 self.gamma = jnp.ones(shape)
                 self.beta = jnp.zeros(shape)
+
+    @property
+    def params(self):
+        return {"gamma": self.gamma, "beta": self.beta}
+
+    @params.setter
+    def params(self, value):
+        if isinstance(value, dict):
+            self.gamma = value["gamma"]
+            self.beta = value["beta"]
 
     def build(self, input_shape, key):
         if self.gamma is None:

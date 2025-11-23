@@ -75,35 +75,40 @@ key_layers_init, key_trainer_init = random.split(key_master)
 # Split keys for layer initializations
 keys_for_layers = random.split(key_layers_init, 4)
 
-layers = [
-    Conv2D(
-        input_channels=1,
-        output_channels=16,
-        kernel_size=(3, 3),
-        activation=relu,
-        key=keys_for_layers[0],
-        padding="SAME",
-    ),
-    Conv2D(
-        input_channels=16,
-        output_channels=32,
-        kernel_size=(3, 3),
-        activation=relu,
-        key=keys_for_layers[1],
-        padding="SAME",
-    ),
-    Flatten(),
-    Dense(
-        input_dim=28 * 28 * 32,
-        output_dim=128,
-        activation=relu,
-        key=keys_for_layers[2],
-    ),
-    Dropout(rate=0.5),
-    Dense(input_dim=128, output_dim=10, activation=softmax, key=keys_for_layers[3]),
-]
 
-model = NeuralNetwork(layers)
+def create_model(keys):
+    return NeuralNetwork(
+        [
+            Conv2D(
+                input_channels=1,
+                output_channels=16,
+                kernel_size=(3, 3),
+                activation=relu,
+                key=keys[0],
+                padding="SAME",
+            ),
+            Conv2D(
+                input_channels=16,
+                output_channels=32,
+                kernel_size=(3, 3),
+                activation=relu,
+                key=keys[1],
+                padding="SAME",
+            ),
+            Flatten(),
+            Dense(
+                input_dim=28 * 28 * 32,
+                output_dim=128,
+                activation=relu,
+                key=keys[2],
+            ),
+            Dropout(rate=0.5),
+            Dense(input_dim=128, output_dim=10, activation=softmax, key=keys[3]),
+        ]
+    )
+
+
+model = create_model(keys_for_layers)
 print("\nModel architecture defined.")
 
 # --- 3. Initialize Trainer ---
@@ -124,7 +129,7 @@ history = trainer.train(
 )
 
 print("\nTraining finished.")
-print("Training history (loss per epoch):", [f"{loss:.4f}" for loss in history])
+print("Training history (loss per epoch):", [f"{loss:.4f}" for loss in history["loss"]])
 
 # --- 5. Evaluate the Model ---
 print("\nEvaluating model...")
@@ -140,7 +145,10 @@ print(f"\nSaving model to {model_filename}...")
 trainer.model.save(model_filename)
 
 print(f"Loading model from {model_filename}...")
-loaded_model = NeuralNetwork.load(model_filename)
+# Create a new model instance with the same architecture
+# We can use new random keys since weights will be overwritten
+loaded_model = create_model(random.split(random.PRNGKey(0), 4))
+loaded_model.load(model_filename)
 print("Model loaded.")
 
 loaded_y_pred = loaded_model(X_test, training=False)
