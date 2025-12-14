@@ -3,6 +3,7 @@ import os
 import jax.numpy as jnp
 import numpy as np
 from jax import random
+
 from paxjaxlib.layers import Dense
 from paxjaxlib.models import NeuralNetwork
 

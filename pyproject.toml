@@ -34,6 +34,8 @@ line-length = 88
 [tool.ruff.lint]
 select = ["E", "F", "I", "B"]
 ignore = []
+[tool.ruff.lint.isort]
+known-first-party = ["paxjaxlib"]
 
 [tool.mypy]
 python_version = "3.13"
