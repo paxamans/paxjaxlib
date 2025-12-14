@@ -202,6 +202,7 @@ class BatchNorm(Module):
         self.epsilon = epsilon
         self.gamma = jnp.ones(input_dim)
         self.beta = jnp.zeros(input_dim)
+        self.running_mean = jnp.zeros(input_dim)
         self.running_var = jnp.ones(input_dim)
 
     @property
