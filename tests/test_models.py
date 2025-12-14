@@ -25,7 +25,7 @@ def test_model_save_and_load():
     new_model.load(filepath)
 
     # Check if parameters are loaded correctly
-    for old_p, new_p in zip(model.params, new_model.params):
+    for old_p, new_p in zip(model.params, new_model.params, strict=True):
         for key in old_p:
             assert np.allclose(old_p[key], new_p[key])
 

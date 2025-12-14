@@ -112,7 +112,7 @@ class Module:
         if len(children) != len(children_keys):
             raise ValueError("Mismatch between children and keys during unflattening")
 
-        for key, val in zip(children_keys, children):
+        for key, val in zip(children_keys, children, strict=True):
             setattr(module, key, val)
 
         return module
