@@ -86,4 +86,4 @@ Coming soon
 
 ## License
 
-This project is licensed under the GNU GENERAL PUBLIC LICENSE.
+This project is licensed under the MIT LICENSE.
