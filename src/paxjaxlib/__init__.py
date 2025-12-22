@@ -6,8 +6,6 @@ from .losses import binary_crossentropy, categorical_crossentropy, mse_loss
 from .models import NeuralNetwork
 from .training import Trainer
 
-# from .schedules import exponential_decay, step_decay # later
-
 __all__ = [
     # Layers
     "Conv2D",

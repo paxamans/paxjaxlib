@@ -72,17 +72,16 @@ class Module:
             # Determine if it should be a child (dynamic) or aux (static)
             is_child = True
 
-            # Callables (that are not Modules) are definitely static
-            if callable(val) and not isinstance(val, Module):
-                is_child = False
-
-            # Primitives are static
-            elif isinstance(val, (int, float, str, bool, type(None))):
-                is_child = False
-
-            # Tuples of primitives (like shapes) are static
-            elif isinstance(val, tuple) and all(
-                isinstance(x, (int, float, str, bool, type(None))) for x in val
+            # Callables (not Modules), Primitives, and Tuples of primitives are static
+            if (
+                (callable(val) and not isinstance(val, Module))
+                or isinstance(val, (int, float, str, bool, type(None)))
+                or (
+                    isinstance(val, tuple)
+                    and all(
+                        isinstance(x, (int, float, str, bool, type(None))) for x in val
+                    )
+                )
             ):
                 is_child = False
 

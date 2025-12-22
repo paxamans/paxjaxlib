@@ -27,7 +27,7 @@ class NeuralNetwork(Module):
             return
         for layer in self.layers:
             if isinstance(layer, (Dense, Conv2D, BatchNorm, LayerNorm)):
-                layer.build(input_shape, key)
+                layer.build(input_shape)
             input_shape = layer(jnp.ones(input_shape)).shape
         self._built = True
 

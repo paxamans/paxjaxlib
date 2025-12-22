@@ -44,18 +44,18 @@ def load_and_preprocess_data():
     test_ds = test_ds.map(preprocess).batch(1024).prefetch(tf.data.AUTOTUNE)
 
     # Convert to JAX arrays
-    X_train_list, y_train_list = [], []
+    x_train_list, y_train_list = [], []
     for image, label in tfds.as_numpy(train_ds):
-        X_train_list.append(image)
+        x_train_list.append(image)
         y_train_list.append(label)
-    X_train_jax = jnp.concatenate(X_train_list)
+    x_train_jax = jnp.concatenate(x_train_list)
     y_train_jax = jnp.concatenate(y_train_list)
 
-    X_test_list, y_test_list = [], []
+    x_test_list, y_test_list = [], []
     for image, label in tfds.as_numpy(test_ds):
-        X_test_list.append(image)
+        x_test_list.append(image)
         y_test_list.append(label)
-    X_test_jax = jnp.concatenate(X_test_list)
+    x_test_jax = jnp.concatenate(x_test_list)
     y_test_jax = jnp.concatenate(y_test_list)
 
     # One-hot encode labels
@@ -63,7 +63,7 @@ def load_and_preprocess_data():
     y_train_jax_one_hot = jax.nn.one_hot(y_train_jax, num_classes)
     y_test_jax_one_hot = jax.nn.one_hot(y_test_jax, num_classes)
 
-    return X_train_jax, y_train_jax_one_hot, X_test_jax, y_test_jax_one_hot, y_test_jax
+    return x_train_jax, y_train_jax_one_hot, x_test_jax, y_test_jax_one_hot, y_test_jax
 
 
 X_train, y_train, X_test, y_test_one_hot, y_test_labels = load_and_preprocess_data()

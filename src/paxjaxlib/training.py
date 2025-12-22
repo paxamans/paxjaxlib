@@ -104,20 +104,20 @@ class Trainer:
         for epoch in range(epochs):
             key_iter, shuffle_key = random.split(key_iter)
             permuted_indices = random.permutation(shuffle_key, n_samples)
-            X_shuffled = X[permuted_indices]
+            x_shuffled = X[permuted_indices]
             y_shuffled = y[permuted_indices]
 
             epoch_losses = []
             for batch_idx in range(num_batches):
                 start_idx = batch_idx * batch_size
                 end_idx = min((batch_idx + 1) * batch_size, n_samples)
-                batch_X = X_shuffled[start_idx:end_idx]
+                batch_x = x_shuffled[start_idx:end_idx]
                 batch_y = y_shuffled[start_idx:end_idx]
 
                 key_iter, step_key = random.split(key_iter)
 
                 self.model, self.opt_state, loss = self._update_step(
-                    self.model, self.opt_state, batch_X, batch_y, step_key
+                    self.model, self.opt_state, batch_x, batch_y, step_key
                 )
                 epoch_losses.append(loss)
 

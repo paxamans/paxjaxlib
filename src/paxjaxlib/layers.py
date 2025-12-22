@@ -38,7 +38,7 @@ class Dropout(Module):
             key (Optional[Any]): JAX PRNGKey for dropout. Required if training is True.
             training (bool): If True, applies dropout.
         """
-        if not training or self.rate == 0.0:
+        if not training or self.rate <= 0.0:
             return X
 
         if key is None:
@@ -248,12 +248,8 @@ class LayerNorm(Module):
         self.gamma = None
         self.beta = None
         if shape is not None:
-            if isinstance(shape, tuple):
-                self.gamma = jnp.ones(shape)
-                self.beta = jnp.zeros(shape)
-            else:
-                self.gamma = jnp.ones(shape)
-                self.beta = jnp.zeros(shape)
+            self.gamma = jnp.ones(shape)
+            self.beta = jnp.zeros(shape)
 
     @property
     def params(self):
@@ -265,7 +261,7 @@ class LayerNorm(Module):
             self.gamma = value["gamma"]
             self.beta = value["beta"]
 
-    def build(self, input_shape, key):
+    def build(self, input_shape):
         if self.gamma is None:
             self.gamma = jnp.ones(input_shape[-1])
             self.beta = jnp.zeros(input_shape[-1])
