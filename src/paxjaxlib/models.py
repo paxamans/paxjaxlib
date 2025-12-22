@@ -22,7 +22,7 @@ class NeuralNetwork(Module):
                 params.append(layer.params)
         return params
 
-    def build(self, input_shape, key):
+    def build(self, input_shape):
         if self._built:
             return
         for layer in self.layers:

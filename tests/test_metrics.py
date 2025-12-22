@@ -19,7 +19,6 @@ def test_precision():
     y_true = jnp.array([1, 0, 1, 1, 0, 0])
     y_pred = jnp.array([1, 1, 1, 0, 0, 1])
 
-    # Precision = 2 / (2 + 2) = 0.5
     assert jnp.isclose(metrics.precision(y_true, y_pred), 0.5)
 
 
@@ -27,7 +26,6 @@ def test_recall():
     y_true = jnp.array([1, 0, 1, 1, 0, 0])
     y_pred = jnp.array([1, 1, 1, 0, 0, 1])
 
-    # Recall = 2 / (2 + 1) = 2/3
     assert jnp.isclose(metrics.recall(y_true, y_pred), 2.0 / 3.0)
 
 
