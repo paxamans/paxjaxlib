@@ -4,13 +4,17 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "paxjaxlib"
-version = "0.2.0"
-description = "A simple neural network implementation using JAX"
+version = "0.1.2"
+description = "A simple neural network implementation using JAX, made for educational purposes"
 readme = "README.md"
 requires-python = ">=3.13"
+license = { text = "MIT" }
+authors = [
+    { name = "Igor Beketov", email = "paxamans@gmail.com" }
+]
+keywords = ["neural network", "deep learning", "jax"]
 classifiers = [
     "Programming Language :: Python :: 3",
-    "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
 ]
 dependencies = [
@@ -19,6 +23,12 @@ dependencies = [
     "numpy",
     "optax",
 ]
+
+[project.urls]
+Homepage = "https://github.com/paxamans/paxjaxlib"
+
+[tool.setuptools.packages.find]
+where = ["src"]
 
 [project.optional-dependencies]
 dev = [
