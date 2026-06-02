@@ -126,6 +126,86 @@ class Trainer:
         new_model = optax.apply_updates(model, updates)
         return new_model, new_opt_state, loss_val
 
+    def _init_history(
+        self, metric_names: List[str], val_data_present: bool
+    ) -> Dict[str, List[float]]:
+        history: Dict[str, List[float]] = {"loss": []}
+        for name in metric_names:
+            history[name] = []
+        if val_data_present:
+            history["val_loss"] = []
+            for name in metric_names:
+                history[f"val_{name}"] = []
+        return history
+
+    def _run_epoch(
+        self,
+        X: jnp.ndarray,
+        y: jnp.ndarray,
+        batch_size: int,
+        num_batches: int,
+        key_iter: Any,
+    ) -> Tuple[float, Any]:
+        n_samples = X.shape[0]
+        key_iter, shuffle_key = random.split(key_iter)
+        permuted_indices = random.permutation(shuffle_key, n_samples)
+        x_shuffled = X[permuted_indices]
+        y_shuffled = y[permuted_indices]
+
+        epoch_losses = []
+        for batch_idx in range(num_batches):
+            start_idx = batch_idx * batch_size
+            end_idx = min((batch_idx + 1) * batch_size, n_samples)
+            batch_x = x_shuffled[start_idx:end_idx]
+            batch_y = y_shuffled[start_idx:end_idx]
+
+            key_iter, step_key = random.split(key_iter)
+
+            self.model, self.opt_state, loss = self._update_step(
+                self.model, self.opt_state, batch_x, batch_y, step_key
+            )
+            epoch_losses.append(loss)
+
+        avg_epoch_loss = float(jnp.mean(jnp.array(epoch_losses)))
+        return avg_epoch_loss, key_iter
+
+    def _evaluate_validation(
+        self,
+        val_data: Tuple[jnp.ndarray, jnp.ndarray],
+        history: Dict[str, List[float]],
+    ) -> Tuple[float, Dict[str, float]]:
+        X_val, y_val = val_data
+        val_loss = float(self.evaluate(X_val, y_val))
+        history["val_loss"].append(val_loss)
+        val_metrics = self._metrics_wrapper(self.model, X_val, y_val)
+        for metric_name, metric_value in val_metrics.items():
+            history[f"val_{metric_name}"].append(float(metric_value))
+        return val_loss, val_metrics
+
+    def _check_early_stopping(
+        self,
+        val_loss: float,
+        best_val_loss: float,
+        patience_counter: int,
+        early_stopping_patience: int,
+        epoch: int,
+        verbose: bool,
+    ) -> Tuple[float, int, bool]:
+        """Returns (new_best_val_loss, new_patience_counter, should_stop)."""
+        if val_loss < best_val_loss:
+            return val_loss, 0, False
+
+        patience_counter += 1
+        if patience_counter >= early_stopping_patience:
+            if verbose:
+                print(
+                    f"Early stopping at epoch {epoch + 1} "
+                    f"(val_loss did not improve for "
+                    f"{early_stopping_patience} epochs)"
+                )
+            return best_val_loss, patience_counter, True
+        return best_val_loss, patience_counter, False
+
     def train(
         self,
         X: jnp.ndarray,
@@ -167,43 +247,19 @@ class Trainer:
                 m.__name__ if hasattr(m, "__name__") else str(m) for m in self.metrics
             ]
 
-        history: Dict[str, List[float]] = {"loss": []}
-        for name in metric_names:
-            history[name] = []
-        if val_data is not None:
-            history["val_loss"] = []
-            for name in metric_names:
-                history[f"val_{name}"] = []
+        history = self._init_history(metric_names, val_data is not None)
 
         # Early stopping state
         best_val_loss = float("inf")
         patience_counter = 0
         best_model = self.model
-
         key_iter = self.key
 
         for epoch in range(epochs):
-            key_iter, shuffle_key = random.split(key_iter)
-            permuted_indices = random.permutation(shuffle_key, n_samples)
-            x_shuffled = X[permuted_indices]
-            y_shuffled = y[permuted_indices]
-
-            epoch_losses = []
-            for batch_idx in range(num_batches):
-                start_idx = batch_idx * batch_size
-                end_idx = min((batch_idx + 1) * batch_size, n_samples)
-                batch_x = x_shuffled[start_idx:end_idx]
-                batch_y = y_shuffled[start_idx:end_idx]
-
-                key_iter, step_key = random.split(key_iter)
-
-                self.model, self.opt_state, loss = self._update_step(
-                    self.model, self.opt_state, batch_x, batch_y, step_key
-                )
-                epoch_losses.append(loss)
-
-            avg_epoch_loss = jnp.mean(jnp.array(epoch_losses))
-            history["loss"].append(float(avg_epoch_loss))
+            avg_epoch_loss, key_iter = self._run_epoch(
+                X, y, batch_size, num_batches, key_iter
+            )
+            history["loss"].append(avg_epoch_loss)
 
             train_metrics = self._metrics_wrapper(self.model, X, y)
             for metric_name, metric_value in train_metrics.items():
@@ -212,31 +268,28 @@ class Trainer:
             # Validation
             val_log = ""
             if val_data is not None:
-                X_val, y_val = val_data
-                val_loss = float(self.evaluate(X_val, y_val))
-                history["val_loss"].append(val_loss)
-                val_metrics = self._metrics_wrapper(self.model, X_val, y_val)
-                for metric_name, metric_value in val_metrics.items():
-                    history[f"val_{metric_name}"].append(float(metric_value))
+                val_loss, val_metrics = self._evaluate_validation(val_data, history)
                 val_log = f", Val Loss: {val_loss:.4f}, Val Metrics: {val_metrics}"
 
                 # Early stopping check
                 if early_stopping_patience is not None:
-                    if val_loss < best_val_loss:
-                        best_val_loss = val_loss
-                        patience_counter = 0
+                    (
+                        best_val_loss,
+                        patience_counter,
+                        should_stop,
+                    ) = self._check_early_stopping(
+                        val_loss,
+                        best_val_loss,
+                        patience_counter,
+                        early_stopping_patience,
+                        epoch,
+                        verbose,
+                    )
+                    if should_stop:
+                        self.model = best_model
+                        break
+                    if patience_counter == 0:
                         best_model = self.model
-                    else:
-                        patience_counter += 1
-                        if patience_counter >= early_stopping_patience:
-                            if verbose:
-                                print(
-                                    f"Early stopping at epoch {epoch + 1} "
-                                    f"(val_loss did not improve for "
-                                    f"{early_stopping_patience} epochs)"
-                                )
-                            self.model = best_model
-                            break
 
             if verbose:
                 print(

@@ -33,16 +33,21 @@ def key():
     return random.PRNGKey(42)
 
 
+@pytest.fixture
+def rng():
+    return np.random.default_rng(42)
+
+
 class TestToPytorch:
     """paxjaxlib → PyTorch conversion."""
 
-    def test_dense_roundtrip_output(self, key):
+    def test_dense_roundtrip_output(self, key, rng):
         from paxjaxlib.torch_bridge import to_pytorch
 
         model = NeuralNetwork([Dense(4, 8, key)])
         pt_model = to_pytorch(model)
 
-        x_np = np.random.randn(2, 4).astype(np.float32)
+        x_np = rng.standard_normal((2, 4), dtype=np.float32)
         jax_out = np.asarray(model(jnp.array(x_np)))
 
         pt_model.eval()
@@ -51,13 +56,13 @@ class TestToPytorch:
 
         np.testing.assert_allclose(jax_out, pt_out, atol=1e-5)
 
-    def test_dense_with_activation(self, key):
+    def test_dense_with_activation(self, key, rng):
         from paxjaxlib.torch_bridge import to_pytorch
 
         model = NeuralNetwork([Dense(4, 8, key, activation=activations.relu)])
         pt_model = to_pytorch(model)
 
-        x_np = np.random.randn(2, 4).astype(np.float32)
+        x_np = rng.standard_normal((2, 4), dtype=np.float32)
         jax_out = np.asarray(model(jnp.array(x_np)))
 
         pt_model.eval()
@@ -99,7 +104,7 @@ class TestToPytorch:
 
         np.testing.assert_allclose(jax_out, pt_out, atol=1e-5)
 
-    def test_multi_layer_sequential(self, key):
+    def test_multi_layer_sequential(self, key, rng):
         from paxjaxlib.torch_bridge import to_pytorch
 
         k1, k2, k3 = random.split(key, 3)
@@ -112,7 +117,7 @@ class TestToPytorch:
         )
         pt_model = to_pytorch(model)
 
-        x_np = np.random.randn(4, 10).astype(np.float32)
+        x_np = rng.standard_normal((4, 10), dtype=np.float32)
         jax_out = np.asarray(model(jnp.array(x_np)))
 
         pt_model.eval()
@@ -125,13 +130,13 @@ class TestToPytorch:
 class TestFromPytorch:
     """PyTorch → paxjaxlib conversion."""
 
-    def test_linear_roundtrip(self, key):
+    def test_linear_roundtrip(self, key, rng):
         from paxjaxlib.torch_bridge import from_pytorch
 
         pt_model = nn.Sequential(nn.Linear(4, 8))
         jax_model = from_pytorch(pt_model, key)
 
-        x_np = np.random.randn(2, 4).astype(np.float32)
+        x_np = rng.standard_normal((2, 4), dtype=np.float32)
 
         pt_model.eval()
         with torch.no_grad():
@@ -140,13 +145,13 @@ class TestFromPytorch:
         jax_out = np.asarray(jax_model(jnp.array(x_np)))
         np.testing.assert_allclose(jax_out, pt_out, atol=1e-5)
 
-    def test_linear_with_relu(self, key):
+    def test_linear_with_relu(self, key, rng):
         from paxjaxlib.torch_bridge import from_pytorch
 
         pt_model = nn.Sequential(nn.Linear(4, 8), nn.ReLU())
         jax_model = from_pytorch(pt_model, key)
 
-        x_np = np.random.randn(2, 4).astype(np.float32)
+        x_np = rng.standard_normal((2, 4), dtype=np.float32)
 
         pt_model.eval()
         with torch.no_grad():
@@ -178,7 +183,7 @@ class TestFromPytorch:
 class TestFullRoundTrip:
     """paxjaxlib → PyTorch → paxjaxlib → verify identical outputs."""
 
-    def test_dense_full_roundtrip(self, key):
+    def test_dense_full_roundtrip(self, key, rng):
         from paxjaxlib.torch_bridge import from_pytorch, to_pytorch
 
         k1, k2 = random.split(key)
@@ -189,7 +194,7 @@ class TestFullRoundTrip:
             ]
         )
 
-        x_np = np.random.randn(3, 8).astype(np.float32)
+        x_np = rng.standard_normal((3, 8), dtype=np.float32)
         original_out = np.asarray(original(jnp.array(x_np)))
 
         # paxjaxlib → PyTorch → paxjaxlib

@@ -121,89 +121,106 @@ def to_pytorch(model: NeuralNetwork) -> nn.Sequential:
     return nn.Sequential(*pt_layers)
 
 
+def _dense_to_pytorch(layer: Dense) -> list[nn.Module]:
+    modules: list[nn.Module] = []
+    in_f, out_f = layer.input_dim, layer.output_dim
+    linear = nn.Linear(in_f, out_f)
+    linear.weight = nn.Parameter(torch.from_numpy(np.asarray(layer.W.T)).float())
+    linear.bias = nn.Parameter(torch.from_numpy(np.asarray(layer.b)).float())
+    modules.append(linear)
+    act_mod = _activation_to_pytorch(layer.activation)
+    if act_mod is not None:
+        modules.append(act_mod)
+    return modules
+
+
+def _conv2d_to_pytorch(layer: Conv2D) -> list[nn.Module]:
+    modules: list[nn.Module] = []
+    conv = nn.Conv2d(
+        layer.input_channels,
+        layer.output_channels,
+        kernel_size=layer.kernel_size,
+        stride=layer.stride,
+        padding="same" if layer.padding == "SAME" else 0,
+    )
+    w_np = np.asarray(layer.W)
+    conv.weight = nn.Parameter(torch.from_numpy(w_np.transpose(3, 2, 0, 1)).float())
+    conv.bias = nn.Parameter(torch.from_numpy(np.asarray(layer.b)).float())
+    modules.append(conv)
+    act_mod = _activation_to_pytorch(layer.activation)
+    if act_mod is not None:
+        modules.append(act_mod)
+    return modules
+
+
+def _dropout_to_pytorch(layer: Dropout) -> list[nn.Module]:
+    return [nn.Dropout(p=layer.rate)]
+
+
+def _flatten_to_pytorch(layer: Flatten) -> list[nn.Module]:
+    return [nn.Flatten(start_dim=1)]
+
+
+def _maxpooling2d_to_pytorch(layer: MaxPooling2D) -> list[nn.Module]:
+    return [nn.MaxPool2d(kernel_size=layer.pool_size, stride=layer.strides)]
+
+
+def _avgpooling2d_to_pytorch(layer: AvgPooling2D) -> list[nn.Module]:
+    return [nn.AvgPool2d(kernel_size=layer.pool_size, stride=layer.strides)]
+
+
+def _globalavgpooling2d_to_pytorch(layer: GlobalAvgPooling2D) -> list[nn.Module]:
+    return [nn.AdaptiveAvgPool2d(1), nn.Flatten(start_dim=1)]
+
+
+def _batchnorm_to_pytorch(layer: BatchNorm) -> list[nn.Module]:
+    bn = nn.BatchNorm1d(
+        layer.input_dim,
+        eps=layer.epsilon,
+        momentum=1.0 - layer.momentum,
+    )
+    bn.weight = nn.Parameter(torch.from_numpy(np.asarray(layer.gamma)).float())
+    bn.bias = nn.Parameter(torch.from_numpy(np.asarray(layer.beta)).float())
+    bn.running_mean = torch.from_numpy(np.asarray(layer.running_mean)).float()
+    bn.running_var = torch.from_numpy(np.asarray(layer.running_var)).float()
+    return [bn]
+
+
+def _layernorm_to_pytorch(layer: LayerNorm) -> list[nn.Module]:
+    if layer.gamma is not None:
+        shape = list(layer.gamma.shape)
+        ln = nn.LayerNorm(shape, eps=layer.epsilon)
+        ln.weight = nn.Parameter(torch.from_numpy(np.asarray(layer.gamma)).float())
+        ln.bias = nn.Parameter(torch.from_numpy(np.asarray(layer.beta)).float())
+        return [ln]
+    return [nn.LayerNorm(list(layer.shape or [1]), eps=layer.epsilon)]
+
+
+def _embedding_to_pytorch(layer: Embedding) -> list[nn.Module]:
+    emb = nn.Embedding(layer.num_embeddings, layer.embedding_dim)
+    emb.weight = nn.Parameter(torch.from_numpy(np.asarray(layer.W)).float())
+    return [emb]
+
+
+_TO_PYTORCH_CONVERTERS: dict[Any, Callable[[Any], list[nn.Module]]] = {
+    Dense: _dense_to_pytorch,
+    Conv2D: _conv2d_to_pytorch,
+    Dropout: _dropout_to_pytorch,
+    Flatten: _flatten_to_pytorch,
+    MaxPooling2D: _maxpooling2d_to_pytorch,
+    AvgPooling2D: _avgpooling2d_to_pytorch,
+    GlobalAvgPooling2D: _globalavgpooling2d_to_pytorch,
+    BatchNorm: _batchnorm_to_pytorch,
+    LayerNorm: _layernorm_to_pytorch,
+    Embedding: _embedding_to_pytorch,
+}
+
+
 def _convert_layer_to_pytorch(layer: Any) -> list[nn.Module]:
     """Convert a single paxjaxlib layer to one or more PyTorch modules."""
-
-    # --- Dense → Linear ---
-    if isinstance(layer, Dense):
-        modules: list[nn.Module] = []
-        in_f, out_f = layer.input_dim, layer.output_dim
-        linear = nn.Linear(in_f, out_f)
-        # paxjaxlib: (in, out) → PyTorch: (out, in)
-        linear.weight = nn.Parameter(torch.from_numpy(np.asarray(layer.W.T)).float())
-        linear.bias = nn.Parameter(torch.from_numpy(np.asarray(layer.b)).float())
-        modules.append(linear)
-        # Attach activation if the layer has a non-identity one
-        act_mod = _activation_to_pytorch(layer.activation)
-        if act_mod is not None:
-            modules.append(act_mod)
-        return modules
-
-    # --- Conv2D → Conv2d ---
-    if isinstance(layer, Conv2D):
-        modules = []
-        conv = nn.Conv2d(
-            layer.input_channels,
-            layer.output_channels,
-            kernel_size=layer.kernel_size,
-            stride=layer.stride,
-            padding="same" if layer.padding == "SAME" else 0,
-        )
-        # paxjaxlib kernel: (H, W, In, Out) → PyTorch: (Out, In, H, W)
-        w_np = np.asarray(layer.W)
-        conv.weight = nn.Parameter(torch.from_numpy(w_np.transpose(3, 2, 0, 1)).float())
-        conv.bias = nn.Parameter(torch.from_numpy(np.asarray(layer.b)).float())
-        modules.append(conv)
-        act_mod = _activation_to_pytorch(layer.activation)
-        if act_mod is not None:
-            modules.append(act_mod)
-        return modules
-
-    # --- Dropout ---
-    if isinstance(layer, Dropout):
-        return [nn.Dropout(p=layer.rate)]
-
-    # --- Flatten ---
-    if isinstance(layer, Flatten):
-        return [nn.Flatten(start_dim=1)]
-
-    # --- Pooling ---
-    if isinstance(layer, MaxPooling2D):
-        return [nn.MaxPool2d(kernel_size=layer.pool_size, stride=layer.strides)]
-
-    if isinstance(layer, AvgPooling2D):
-        return [nn.AvgPool2d(kernel_size=layer.pool_size, stride=layer.strides)]
-
-    if isinstance(layer, GlobalAvgPooling2D):
-        return [nn.AdaptiveAvgPool2d(1), nn.Flatten(start_dim=1)]
-
-    # --- Normalisation ---
-    if isinstance(layer, BatchNorm):
-        bn = nn.BatchNorm1d(
-            layer.input_dim,
-            eps=layer.epsilon,
-            momentum=1.0 - layer.momentum,
-        )
-        bn.weight = nn.Parameter(torch.from_numpy(np.asarray(layer.gamma)).float())
-        bn.bias = nn.Parameter(torch.from_numpy(np.asarray(layer.beta)).float())
-        bn.running_mean = torch.from_numpy(np.asarray(layer.running_mean)).float()
-        bn.running_var = torch.from_numpy(np.asarray(layer.running_var)).float()
-        return [bn]
-
-    if isinstance(layer, LayerNorm):
-        if layer.gamma is not None:
-            shape = list(layer.gamma.shape)
-            ln = nn.LayerNorm(shape, eps=layer.epsilon)
-            ln.weight = nn.Parameter(torch.from_numpy(np.asarray(layer.gamma)).float())
-            ln.bias = nn.Parameter(torch.from_numpy(np.asarray(layer.beta)).float())
-            return [ln]
-        return [nn.LayerNorm(list(layer.shape or [1]), eps=layer.epsilon)]
-
-    # --- Embedding ---
-    if isinstance(layer, Embedding):
-        emb = nn.Embedding(layer.num_embeddings, layer.embedding_dim)
-        emb.weight = nn.Parameter(torch.from_numpy(np.asarray(layer.W)).float())
-        return [emb]
+    for cls, converter in _TO_PYTORCH_CONVERTERS.items():
+        if isinstance(layer, cls):
+            return converter(layer)
 
     # --- Plain activation function ---
     act_mod = _activation_to_pytorch(layer)
@@ -279,6 +296,210 @@ def from_pytorch(
     return NeuralNetwork(layers)
 
 
+def _linear_from_pytorch(
+    pt_layer: nn.Module,
+    key: Any,
+    all_layers: list[nn.Module],
+    idx: int,
+) -> tuple[list[Any], int]:
+    assert isinstance(pt_layer, nn.Linear)
+    in_f = pt_layer.in_features
+    out_f = pt_layer.out_features
+    dense = Dense(in_f, out_f, key)
+    # PyTorch: (out, in) → paxjaxlib: (in, out)
+    dense.W = jnp.array(pt_layer.weight.detach().numpy().T)
+    if pt_layer.bias is not None:
+        dense.b = jnp.array(pt_layer.bias.detach().numpy())
+    else:
+        dense.b = jnp.zeros((out_f,))
+    # Check if next layer is an activation
+    consumed = 1
+    act_fn = _peek_activation_from_pytorch(all_layers, idx + 1)
+    if act_fn is not None:
+        dense.activation = act_fn
+        consumed = 2
+    return [dense], consumed
+
+
+def _conv2d_from_pytorch(
+    pt_layer: nn.Module,
+    key: Any,
+    all_layers: list[nn.Module],
+    idx: int,
+) -> tuple[list[Any], int]:
+    assert isinstance(pt_layer, nn.Conv2d)
+    ic = pt_layer.in_channels
+    oc = pt_layer.out_channels
+    conv_ks = pt_layer.kernel_size
+    conv_stride = pt_layer.stride
+    pad = "SAME" if pt_layer.padding == "same" else "VALID"
+    ks_pair = (
+        (conv_ks[0], conv_ks[1])
+        if isinstance(conv_ks, (tuple, list))
+        else (conv_ks, conv_ks)
+    )
+    stride_pair = (
+        (conv_stride[0], conv_stride[1])
+        if isinstance(conv_stride, (tuple, list))
+        else (conv_stride, conv_stride)
+    )
+    conv = Conv2D(ic, oc, ks_pair, key, stride=stride_pair, padding=pad)
+    # PyTorch: (Out, In, H, W) → paxjaxlib: (H, W, In, Out)
+    w_np = pt_layer.weight.detach().numpy()
+    conv.W = jnp.array(w_np.transpose(2, 3, 1, 0))
+    if pt_layer.bias is not None:
+        conv.b = jnp.array(pt_layer.bias.detach().numpy())
+    else:
+        conv.b = jnp.zeros((oc,))
+    consumed = 1
+    act_fn = _peek_activation_from_pytorch(all_layers, idx + 1)
+    if act_fn is not None:
+        conv.activation = act_fn
+        consumed = 2
+    return [conv], consumed
+
+
+def _dropout_from_pytorch(
+    pt_layer: nn.Module,
+    key: Any,
+    all_layers: list[nn.Module],
+    idx: int,
+) -> tuple[list[Any], int]:
+    assert isinstance(pt_layer, nn.Dropout)
+    return [Dropout(rate=pt_layer.p)], 1
+
+
+def _flatten_from_pytorch(
+    pt_layer: nn.Module,
+    key: Any,
+    all_layers: list[nn.Module],
+    idx: int,
+) -> tuple[list[Any], int]:
+    return [Flatten()], 1
+
+
+def _maxpool2d_from_pytorch(
+    pt_layer: nn.Module,
+    key: Any,
+    all_layers: list[nn.Module],
+    idx: int,
+) -> tuple[list[Any], int]:
+    assert isinstance(pt_layer, nn.MaxPool2d)
+    maxpool_ks = pt_layer.kernel_size
+    maxpool_stride = pt_layer.stride
+    maxpool_ks_pair = (
+        (maxpool_ks, maxpool_ks)
+        if isinstance(maxpool_ks, int)
+        else (maxpool_ks[0], maxpool_ks[1])
+    )
+    maxpool_st_pair = (
+        (maxpool_stride, maxpool_stride)
+        if isinstance(maxpool_stride, int)
+        else (maxpool_stride[0], maxpool_stride[1])
+    )
+    return [MaxPooling2D(pool_size=maxpool_ks_pair, strides=maxpool_st_pair)], 1
+
+
+def _avgpool2d_from_pytorch(
+    pt_layer: nn.Module,
+    key: Any,
+    all_layers: list[nn.Module],
+    idx: int,
+) -> tuple[list[Any], int]:
+    assert isinstance(pt_layer, nn.AvgPool2d)
+    avgpool_ks = pt_layer.kernel_size
+    avgpool_stride = pt_layer.stride
+    avgpool_ks_pair = (
+        (avgpool_ks, avgpool_ks)
+        if isinstance(avgpool_ks, int)
+        else (avgpool_ks[0], avgpool_ks[1])
+    )
+    avgpool_st_pair = (
+        (avgpool_stride, avgpool_stride)
+        if isinstance(avgpool_stride, int)
+        else (avgpool_stride[0], avgpool_stride[1])
+    )
+    return [AvgPooling2D(pool_size=avgpool_ks_pair, strides=avgpool_st_pair)], 1
+
+
+def _adaptive_avgpool2d_from_pytorch(
+    pt_layer: nn.Module,
+    key: Any,
+    all_layers: list[nn.Module],
+    idx: int,
+) -> tuple[list[Any], int]:
+    return [GlobalAvgPooling2D()], 1
+
+
+def _batchnorm1d_from_pytorch(
+    pt_layer: nn.Module,
+    key: Any,
+    all_layers: list[nn.Module],
+    idx: int,
+) -> tuple[list[Any], int]:
+    assert isinstance(pt_layer, nn.BatchNorm1d)
+    bn = BatchNorm(
+        pt_layer.num_features,
+        key,
+        momentum=1.0 - pt_layer.momentum,
+        epsilon=pt_layer.eps,
+    )
+    if pt_layer.weight is not None:
+        bn.gamma = jnp.array(pt_layer.weight.detach().numpy())
+    if pt_layer.bias is not None:
+        bn.beta = jnp.array(pt_layer.bias.detach().numpy())
+    if pt_layer.running_mean is not None:
+        bn.running_mean = jnp.array(pt_layer.running_mean.detach().numpy())
+    if pt_layer.running_var is not None:
+        bn.running_var = jnp.array(pt_layer.running_var.detach().numpy())
+    return [bn], 1
+
+
+def _layernorm_from_pytorch(
+    pt_layer: nn.Module,
+    key: Any,
+    all_layers: list[nn.Module],
+    idx: int,
+) -> tuple[list[Any], int]:
+    assert isinstance(pt_layer, nn.LayerNorm)
+    shape = tuple(pt_layer.normalized_shape)
+    ln = LayerNorm(shape=shape, epsilon=pt_layer.eps)
+    if pt_layer.weight is not None:
+        ln.gamma = jnp.array(pt_layer.weight.detach().numpy())
+    if pt_layer.bias is not None:
+        ln.beta = jnp.array(pt_layer.bias.detach().numpy())
+    return [ln], 1
+
+
+def _embedding_from_pytorch(
+    pt_layer: nn.Module,
+    key: Any,
+    all_layers: list[nn.Module],
+    idx: int,
+) -> tuple[list[Any], int]:
+    assert isinstance(pt_layer, nn.Embedding)
+    emb = Embedding(pt_layer.num_embeddings, pt_layer.embedding_dim, key)
+    emb.W = jnp.array(pt_layer.weight.detach().numpy())
+    return [emb], 1
+
+
+_FROM_PYTORCH_CONVERTERS: dict[
+    Any,
+    Callable[[nn.Module, Any, list[nn.Module], int], tuple[list[Any], int]],
+] = {
+    nn.Linear: _linear_from_pytorch,
+    nn.Conv2d: _conv2d_from_pytorch,
+    nn.Dropout: _dropout_from_pytorch,
+    nn.Flatten: _flatten_from_pytorch,
+    nn.MaxPool2d: _maxpool2d_from_pytorch,
+    nn.AvgPool2d: _avgpool2d_from_pytorch,
+    nn.AdaptiveAvgPool2d: _adaptive_avgpool2d_from_pytorch,
+    nn.BatchNorm1d: _batchnorm1d_from_pytorch,
+    nn.LayerNorm: _layernorm_from_pytorch,
+    nn.Embedding: _embedding_from_pytorch,
+}
+
+
 def _convert_layer_from_pytorch(
     pt_layer: nn.Module,
     key: Any,
@@ -289,132 +510,9 @@ def _convert_layer_from_pytorch(
 
     Returns (list_of_layers, num_pt_layers_consumed).
     """
-
-    # --- Linear → Dense ---
-    if isinstance(pt_layer, nn.Linear):
-        in_f = pt_layer.in_features
-        out_f = pt_layer.out_features
-        dense = Dense(in_f, out_f, key)
-        # PyTorch: (out, in) → paxjaxlib: (in, out)
-        dense.W = jnp.array(pt_layer.weight.detach().numpy().T)
-        if pt_layer.bias is not None:
-            dense.b = jnp.array(pt_layer.bias.detach().numpy())
-        else:
-            dense.b = jnp.zeros((out_f,))
-        # Check if next layer is an activation
-        consumed = 1
-        act_fn = _peek_activation_from_pytorch(all_layers, idx + 1)
-        if act_fn is not None:
-            dense.activation = act_fn
-            consumed = 2
-        return [dense], consumed
-
-    # --- Conv2d → Conv2D ---
-    if isinstance(pt_layer, nn.Conv2d):
-        ic = pt_layer.in_channels
-        oc = pt_layer.out_channels
-        conv_ks = pt_layer.kernel_size
-        conv_stride = pt_layer.stride
-        pad = "SAME" if pt_layer.padding == "same" else "VALID"
-        ks_pair = (
-            (conv_ks[0], conv_ks[1])
-            if isinstance(conv_ks, (tuple, list))
-            else (conv_ks, conv_ks)
-        )
-        stride_pair = (
-            (conv_stride[0], conv_stride[1])
-            if isinstance(conv_stride, (tuple, list))
-            else (conv_stride, conv_stride)
-        )
-        conv = Conv2D(ic, oc, ks_pair, key, stride=stride_pair, padding=pad)
-        # PyTorch: (Out, In, H, W) → paxjaxlib: (H, W, In, Out)
-        w_np = pt_layer.weight.detach().numpy()
-        conv.W = jnp.array(w_np.transpose(2, 3, 1, 0))
-        if pt_layer.bias is not None:
-            conv.b = jnp.array(pt_layer.bias.detach().numpy())
-        else:
-            conv.b = jnp.zeros((oc,))
-        consumed = 1
-        act_fn = _peek_activation_from_pytorch(all_layers, idx + 1)
-        if act_fn is not None:
-            conv.activation = act_fn
-            consumed = 2
-        return [conv], consumed
-
-    # --- Dropout ---
-    if isinstance(pt_layer, nn.Dropout):
-        return [Dropout(rate=pt_layer.p)], 1
-
-    # --- Flatten ---
-    if isinstance(pt_layer, nn.Flatten):
-        return [Flatten()], 1
-
-    # --- Pooling ---
-    if isinstance(pt_layer, nn.MaxPool2d):
-        maxpool_ks = pt_layer.kernel_size
-        maxpool_stride = pt_layer.stride
-        maxpool_ks_pair = (
-            (maxpool_ks, maxpool_ks)
-            if isinstance(maxpool_ks, int)
-            else (maxpool_ks[0], maxpool_ks[1])
-        )
-        maxpool_st_pair = (
-            (maxpool_stride, maxpool_stride)
-            if isinstance(maxpool_stride, int)
-            else (maxpool_stride[0], maxpool_stride[1])
-        )
-        return [MaxPooling2D(pool_size=maxpool_ks_pair, strides=maxpool_st_pair)], 1
-
-    if isinstance(pt_layer, nn.AvgPool2d):
-        avgpool_ks = pt_layer.kernel_size
-        avgpool_stride = pt_layer.stride
-        avgpool_ks_pair = (
-            (avgpool_ks, avgpool_ks)
-            if isinstance(avgpool_ks, int)
-            else (avgpool_ks[0], avgpool_ks[1])
-        )
-        avgpool_st_pair = (
-            (avgpool_stride, avgpool_stride)
-            if isinstance(avgpool_stride, int)
-            else (avgpool_stride[0], avgpool_stride[1])
-        )
-        return [AvgPooling2D(pool_size=avgpool_ks_pair, strides=avgpool_st_pair)], 1
-
-    if isinstance(pt_layer, nn.AdaptiveAvgPool2d):
-        return [GlobalAvgPooling2D()], 1
-
-    # --- Normalisation ---
-    if isinstance(pt_layer, nn.BatchNorm1d):
-        bn = BatchNorm(
-            pt_layer.num_features,
-            key,
-            momentum=1.0 - pt_layer.momentum,
-            epsilon=pt_layer.eps,
-        )
-        if pt_layer.weight is not None:
-            bn.gamma = jnp.array(pt_layer.weight.detach().numpy())
-        if pt_layer.bias is not None:
-            bn.beta = jnp.array(pt_layer.bias.detach().numpy())
-        if pt_layer.running_mean is not None:
-            bn.running_mean = jnp.array(pt_layer.running_mean.detach().numpy())
-        if pt_layer.running_var is not None:
-            bn.running_var = jnp.array(pt_layer.running_var.detach().numpy())
-        return [bn], 1
-
-    if isinstance(pt_layer, nn.LayerNorm):
-        shape = tuple(pt_layer.normalized_shape)
-        ln = LayerNorm(shape=shape, epsilon=pt_layer.eps)
-        if pt_layer.weight is not None:
-            ln.gamma = jnp.array(pt_layer.weight.detach().numpy())
-        if pt_layer.bias is not None:
-            ln.beta = jnp.array(pt_layer.bias.detach().numpy())
-        return [ln], 1
-
-    # --- Embedding ---
-    if isinstance(pt_layer, nn.Embedding):
-        emb = Embedding(pt_layer.num_embeddings, pt_layer.embedding_dim, key)
-        emb.W = jnp.array(pt_layer.weight.detach().numpy())
-        return [emb], 1
+    for cls, converter in _FROM_PYTORCH_CONVERTERS.items():
+        if isinstance(pt_layer, cls):
+            return converter(pt_layer, key, all_layers, idx)
 
     # --- Standalone activation ---
     act_fn = _torch_module_to_activation(pt_layer)
@@ -464,30 +562,18 @@ def save_as_pytorch(model: NeuralNetwork, path: str) -> None:
 def load_from_pytorch(
     path: str,
     key: Any,
-    pt_model: nn.Sequential | None = None,
+    pt_model: nn.Sequential,
 ) -> NeuralNetwork:
-    """Load a PyTorch model file and convert to paxjaxlib.
+    """Load a PyTorch model state_dict file and convert to paxjaxlib.
 
     Args:
-        path: Path to a saved PyTorch model (full model, not just
-            state_dict).
+        path: Path to a saved PyTorch state_dict.
         key: JAX PRNG key for layer construction.
-        pt_model: If provided, the state_dict from ``path`` is loaded
-            into this model before conversion.  This is needed when the
-            file contains only a state_dict.
+        pt_model: The PyTorch sequential model structure to load weights into.
 
     Returns:
         A paxjaxlib :class:`NeuralNetwork`.
     """
-    if pt_model is not None:
-        state_dict = torch.load(path, weights_only=True)
-        pt_model.load_state_dict(state_dict)
-        return from_pytorch(pt_model, key)
-    else:
-        loaded = torch.load(path, weights_only=False)
-        if isinstance(loaded, nn.Sequential):
-            return from_pytorch(loaded, key)
-        raise TypeError(
-            "The file does not contain an nn.Sequential model. "
-            "Pass a `pt_model` argument to load a state_dict instead."
-        )
+    state_dict = torch.load(path, weights_only=True)
+    pt_model.load_state_dict(state_dict)
+    return from_pytorch(pt_model, key)
