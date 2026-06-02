@@ -44,7 +44,7 @@ class Trainer:
         history = trainer.train(
             X_train, y_train,
             epochs=20,
-            val_data=(X_val, y_val),
+            val_data=(x_val, y_val),
             early_stopping_patience=5,
         )
     """
@@ -174,10 +174,10 @@ class Trainer:
         val_data: Tuple[jnp.ndarray, jnp.ndarray],
         history: Dict[str, List[float]],
     ) -> Tuple[float, Dict[str, float]]:
-        X_val, y_val = val_data
-        val_loss = float(self.evaluate(X_val, y_val))
+        x_val, y_val = val_data
+        val_loss = float(self.evaluate(x_val, y_val))
         history["val_loss"].append(val_loss)
-        val_metrics = self._metrics_wrapper(self.model, X_val, y_val)
+        val_metrics = self._metrics_wrapper(self.model, x_val, y_val)
         return val_loss, val_metrics
 
     def _check_early_stopping(
@@ -271,7 +271,7 @@ class Trainer:
             epochs: Number of full passes over the data. Default ``100``.
             batch_size: Mini-batch size. Default ``32``.
             verbose: Print per-epoch stats. Default ``True``.
-            val_data: Optional ``(X_val, y_val)`` tuple.  When provided,
+            val_data: Optional ``(x_val, y_val)`` tuple.  When provided,
                 validation loss and metrics are computed at the end of
                 each epoch and stored in the history under ``val_loss``,
                 ``val_<metric>``.
