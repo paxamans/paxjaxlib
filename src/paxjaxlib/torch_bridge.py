@@ -422,8 +422,7 @@ def _convert_layer_from_pytorch(
         return [act_fn], 1
 
     raise TypeError(
-        f"Cannot convert PyTorch module of type {type(pt_layer).__name__} "
-        f"to paxjaxlib."
+        f"Cannot convert PyTorch module of type {type(pt_layer).__name__} to paxjaxlib."
     )
 
 

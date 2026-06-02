@@ -519,8 +519,7 @@ class MultiHeadAttention(Module):
         super().__init__()
         if embed_dim % num_heads != 0:
             raise ValueError(
-                f"embed_dim ({embed_dim}) must be divisible by "
-                f"num_heads ({num_heads})."
+                f"embed_dim ({embed_dim}) must be divisible by num_heads ({num_heads})."
             )
         self.embed_dim = embed_dim
         self.num_heads = num_heads
