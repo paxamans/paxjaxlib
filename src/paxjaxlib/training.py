@@ -178,8 +178,6 @@ class Trainer:
         val_loss = float(self.evaluate(X_val, y_val))
         history["val_loss"].append(val_loss)
         val_metrics = self._metrics_wrapper(self.model, X_val, y_val)
-        for metric_name, metric_value in val_metrics.items():
-            history[f"val_{metric_name}"].append(float(metric_value))
         return val_loss, val_metrics
 
     def _check_early_stopping(
@@ -205,6 +203,55 @@ class Trainer:
                 )
             return best_val_loss, patience_counter, True
         return best_val_loss, patience_counter, False
+
+    def _record_metrics(
+        self,
+        history: Dict[str, List[float]],
+        metrics: Dict[str, float],
+        prefix: str = "",
+    ) -> None:
+        for metric_name, metric_value in metrics.items():
+            history[f"{prefix}{metric_name}"].append(float(metric_value))
+
+    def _handle_validation(
+        self,
+        val_data: Tuple[jnp.ndarray, jnp.ndarray],
+        history: Dict[str, List[float]],
+        early_stopping_patience: Optional[int],
+        best_val_loss: float,
+        patience_counter: int,
+        best_model: NeuralNetwork,
+        epoch: int,
+        verbose: bool,
+    ) -> Tuple[str, float, int, NeuralNetwork, bool]:
+        """Returns (val_log, new_best_val_loss, new_patience_counter,
+        new_best_model, should_stop)."""
+        val_loss, val_metrics = self._evaluate_validation(val_data, history)
+        self._record_metrics(history, val_metrics, prefix="val_")
+        val_log = f", Val Loss: {val_loss:.4f}, Val Metrics: {val_metrics}"
+
+        if early_stopping_patience is None:
+            return val_log, best_val_loss, patience_counter, best_model, False
+
+        (
+            new_best_val_loss,
+            new_patience_counter,
+            should_stop,
+        ) = self._check_early_stopping(
+            val_loss,
+            best_val_loss,
+            patience_counter,
+            early_stopping_patience,
+            epoch,
+            verbose,
+        )
+        if should_stop:
+            return val_log, new_best_val_loss, new_patience_counter, best_model, True
+
+        if new_patience_counter == 0:
+            best_model = self.model
+
+        return val_log, new_best_val_loss, new_patience_counter, best_model, False
 
     def train(
         self,
@@ -262,34 +309,30 @@ class Trainer:
             history["loss"].append(avg_epoch_loss)
 
             train_metrics = self._metrics_wrapper(self.model, X, y)
-            for metric_name, metric_value in train_metrics.items():
-                history[metric_name].append(float(metric_value))
+            self._record_metrics(history, train_metrics)
 
             # Validation
             val_log = ""
             if val_data is not None:
-                val_loss, val_metrics = self._evaluate_validation(val_data, history)
-                val_log = f", Val Loss: {val_loss:.4f}, Val Metrics: {val_metrics}"
-
-                # Early stopping check
-                if early_stopping_patience is not None:
-                    (
-                        best_val_loss,
-                        patience_counter,
-                        should_stop,
-                    ) = self._check_early_stopping(
-                        val_loss,
-                        best_val_loss,
-                        patience_counter,
-                        early_stopping_patience,
-                        epoch,
-                        verbose,
-                    )
-                    if should_stop:
-                        self.model = best_model
-                        break
-                    if patience_counter == 0:
-                        best_model = self.model
+                (
+                    val_log,
+                    best_val_loss,
+                    patience_counter,
+                    best_model,
+                    should_stop,
+                ) = self._handle_validation(
+                    val_data,
+                    history,
+                    early_stopping_patience,
+                    best_val_loss,
+                    patience_counter,
+                    best_model,
+                    epoch,
+                    verbose,
+                )
+                if should_stop:
+                    self.model = best_model
+                    break
 
             if verbose:
                 print(
